@@ -1,0 +1,9 @@
+order_id;order_date;customer_email;country;product_sku;product_name;category;quantity;unit_price_eur;status
+1001;2025-02-01;anna@example.com;EE;MUG-001;Keraamiline kruus;Kodu;2;12.90;paid
+1002;2025-02-01;mari@example.com;LV;TEE-004;Roheline tee 100 g;Toidukaubad;1;6.50;paid
+1003;2025-02-02;karl@example.com;LT;NOTE-010;Märkmeraamat A5;Kontor;3;4.20;paid
+1004;2025-02-03;liis@example.com;EE;BAG-002;Riidest ostukott;Aksessuaarid;1;9.90;paid
+1005;2025-02-03;otto@example.com;FI;BOTTLE-007;Termospudel 500 ml;Sport;2;18.00;paid
+1006;2025-02-04;sofia@example.com;SE;CANDLE-003;Lõhnaküünal;Kodu;1;14.50;cancelled
+1007;2025-02-05;jaan@example.com;EE;PEN-008;Geelpliiatsite komplekt;Kontor;4;7.80;paid
+1008;2025-02-05;emma@example.com;NO;SOAP-005;Käsitööseep;Ilu;2;5.90;paid
