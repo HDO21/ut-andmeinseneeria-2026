@@ -603,10 +603,10 @@ Selles failis on üks oluline detail teistsugune kui põhiharjutuses. Selle vari
 
 Soovituslik tööjärjekord:
 
-1. laadi fail alla kausta `data/`
+1. vajadusel laadi fail alla kausta `data/`
 2. ava fail ja kontrolli päist, eraldajat ning kodeeringut
-3. otsusta, millised veerud tabelisse lähevad
-4. loo uus tabel
+3. otsusta, millised veerud tabelisse lähevad (üleliigsed eemalda failist)
+4. loo uus `SQL` tabel
 5. kohanda `COPY` käsku vastavalt failile
 6. kontrolli `SELECT COUNT(*)` päringuga, mitu rida laaditi
 
