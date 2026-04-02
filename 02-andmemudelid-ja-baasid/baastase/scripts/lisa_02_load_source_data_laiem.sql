@@ -1,6 +1,10 @@
 TRUNCATE TABLE source_muuk_laiem;
 
+<<<<<<< HEAD
 copy source_muuk_laiem (
+=======
+COPY source_muuk_laiem (
+>>>>>>> bbba71bb3de89519a3d39fcf41a2af446c9e281d
     tellimuse_nr,
     kuupaev,
     kliendi_id,
