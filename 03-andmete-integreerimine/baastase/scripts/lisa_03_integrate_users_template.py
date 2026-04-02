@@ -1,18 +1,8 @@
 """Lisaülesande näide kolme allika ETL töövoost.
 
-Extract:
-- loe kasutajad API-st
-- loe teavituseelistused JSON failist
-- loe kasutajastaatused staging.user_status tabelist
-
-Transform:
-- puhasta e-posti aadress
-- ühenda API, CSV ja JSON andmed ühe võtme alusel
-
-Load:
-- salvesta API toorandmed staging.api_users tabelisse
-- salvesta JSON andmed staging.notification_preferences tabelisse
-- salvesta lõpptulemus analytics.user_profile tabelisse
+Selles variandis maanduvad kõik allikad esmalt staging kihti.
+Puhastus ja ühildamine toimub intermediate vaates.
+Lõpptulemus laetakse analytics kihti.
 """
 
 import json
@@ -25,9 +15,6 @@ import requests
 API_URL = "https://jsonplaceholder.typicode.com/users"
 PREFERENCES_PATH = "/data/teavituseelistused.json"
 
-# See lisaülesande skript eeldab, et oled enne käivitanud faili
-# /scripts/lisa_01_prepare_preferences.sql.
-
 
 def get_connection():
     return psycopg2.connect(
@@ -39,21 +26,10 @@ def get_connection():
     )
 
 
-def normalize_email(value):
-    """Transform: muuda e-post ühendamiseks sobivaks.
-
-    TODO:
-    1. Kui väärtus on None, tagasta None.
-    2. Eemalda algusest ja lõpust tühikud.
-    3. Muuda tulemus väikesteks tähtedeks.
-    """
-    raise NotImplementedError("Tee normalize_email funktsioon valmis.")
-
-
 def fetch_api_users():
-    """Extract: too kasutajad API-st ja jäta alles vajalikud väljad.
+    """Andmete vastuvõtt: too kasutajad API-st ja jäta alles vajalikud väljad.
 
-    Tagasta list sõnastikest kujul:
+    Tagasta loend sõnastikest kujul:
     {
         "user_id": ...,
         "full_name": ...,
@@ -73,9 +49,9 @@ def fetch_api_users():
 
 
 def read_notification_preferences():
-    """Extract: loe JSON failist teavituseelistused.
+    """Andmete vastuvõtt: loe JSON failist teavituseelistused.
 
-    Tagasta list sõnastikest kujul:
+    Tagasta loend sõnastikest kujul:
     {
         "email": ...,
         "newsletter_opt_in": ...,
@@ -92,7 +68,8 @@ def read_notification_preferences():
 
 
 def load_api_users(conn, api_users):
-    """Load: salvesta API toorandmed staging tabelisse."""
+    """Laadimine staging kihti: salvesta API kasutajad tabelisse staging.api_users."""
+
     with conn.cursor() as cur:
         cur.execute("TRUNCATE TABLE staging.api_users;")
         for user in api_users:
@@ -122,7 +99,8 @@ def load_api_users(conn, api_users):
 
 
 def load_notification_preferences(conn, preferences):
-    """Load: salvesta JSON allika andmed staging tabelisse."""
+    """Laadimine staging kihti: salvesta JSON andmed tabelisse staging.notification_preferences."""
+
     with conn.cursor() as cur:
         cur.execute("TRUNCATE TABLE staging.notification_preferences;")
         for item in preferences:
@@ -147,110 +125,44 @@ def load_notification_preferences(conn, preferences):
     conn.commit()
 
 
-def read_status_lookup(conn):
-    """Extract: loe CSV failist stagingusse jõudnud staatuseandmed."""
+def count_status_rows(conn):
+    """Tagasta, mitu staatusekirjet on staging.user_status tabelis."""
+
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT email, account_status, source_system, updated_at
-            FROM staging.user_status
-            """
-        )
-        rows = cur.fetchall()
-
-    lookup = {}
-    for email, account_status, source_system, updated_at in rows:
-        lookup[normalize_email(email)] = {
-            "account_status": account_status,
-            "source_system": source_system,
-            "updated_at": updated_at,
-        }
-    return lookup
+        cur.execute("SELECT COUNT(*) FROM staging.user_status;")
+        return cur.fetchone()[0]
 
 
-def build_preference_lookup(preferences):
-    lookup = {}
-    for item in preferences:
-        lookup[normalize_email(item["email"])] = {
-            "newsletter_opt_in": item["newsletter_opt_in"],
-            "preferred_channel": item["preferred_channel"],
-            "updated_at": item["updated_at"],
-        }
-    return lookup
+def count_intermediate_rows(conn):
+    """Tagasta, mitu rida annab intermediate.user_profile_enriched vaade."""
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT COUNT(*) FROM intermediate.user_profile_enriched;")
+        return cur.fetchone()[0]
 
 
-def build_final_rows(api_users, status_lookup, preference_lookup):
-    """Transform: ehita lõpptabeli read.
+def load_final_rows_from_intermediate(conn):
+    """Laadimine analytics kihti: lae lõpptabel intermediate vaatest.
 
     TODO:
-    1. Käi kõik API kasutajad läbi.
-    2. Võta kasutaja e-post ja puhasta see normalize_email abil.
-    3. Otsi selle järgi sobiv rida status_lookup ja preference_lookup sõnastikest.
-    4. Tagasta list tuplestest järgmises järjekorras:
-       (
-           user_id,
-           full_name,
-           username,
-           email,
-           city,
-           company_name,
-           account_status,
-           source_system,
-           newsletter_opt_in,
-           preferred_channel
-       )
-    Kui mõnes rikastavas allikas vastet ei ole, jäta selle välja väärtuseks None.
+    1. Tühjenda analytics.user_profile.
+    2. Lae andmed vaatest intermediate.user_profile_enriched.
+    3. Salvesta lõpptabelisse väljad:
+       user_id, full_name, username, email, city, company_name,
+       account_status, source_system, newsletter_opt_in, preferred_channel.
+    4. Tagasta sisestatud ridade arv.
     """
-    raise NotImplementedError("Tee build_final_rows funktsioon valmis.")
-
-
-def load_final_rows(conn, final_rows):
-    """Load: salvesta lõpptulemus analytics skeema tabelisse."""
-    with conn.cursor() as cur:
-        cur.execute("TRUNCATE TABLE analytics.user_profile;")
-        for row in final_rows:
-            cur.execute(
-                """
-                INSERT INTO analytics.user_profile (
-                    user_id,
-                    full_name,
-                    username,
-                    email,
-                    city,
-                    company_name,
-                    account_status,
-                    source_system,
-                    newsletter_opt_in,
-                    preferred_channel,
-                    loaded_at
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW());
-                """,
-                row,
-            )
-    conn.commit()
+    raise NotImplementedError("Tee load_final_rows_from_intermediate valmis.")
 
 
 def main():
     conn = get_connection()
     try:
-        print("ETL etapp 1/3: Extract")
+        print("ETL etapp 1/3: Andmete vastuvõtt ja laadimine staging kihti")
         api_users = fetch_api_users()
         preferences = read_notification_preferences()
-        status_lookup = read_status_lookup(conn)
         print(f"- API-st tuli {len(api_users)} kasutajat.")
         print(f"- JSON failist tuli {len(preferences)} teavituseelistust.")
-        print(f"- Staging-tabelist tuli {len(status_lookup)} staatusekirjet.")
-
-        print("ETL etapp 2/3: Transform")
-        preference_lookup = build_preference_lookup(preferences)
-        final_rows = build_final_rows(api_users, status_lookup, preference_lookup)
-        print(
-            f"- Puhastasin e-posti ja ühendasin andmed {len(final_rows)} "
-            "kasutaja jaoks."
-        )
-
-        print("ETL etapp 3/3: Load")
         load_api_users(conn, api_users)
         print(f"- Laadisin staging.api_users tabelisse {len(api_users)} rida.")
         load_notification_preferences(conn, preferences)
@@ -258,9 +170,19 @@ def main():
             "- Laadisin staging.notification_preferences tabelisse "
             f"{len(preferences)} rida."
         )
-        load_final_rows(conn, final_rows)
+        print(f"- staging.user_status tabelis on {count_status_rows(conn)} staatusekirjet.")
+
+        print("ETL etapp 2/3: Töötlus")
+        intermediate_rows = count_intermediate_rows(conn)
         print(
-            f"- Laadisin analytics.user_profile tabelisse {len(final_rows)} rida."
+            "- Intermediate vaade puhastas e-posti ja ühendas andmed "
+            f"{intermediate_rows} kasutaja jaoks."
+        )
+
+        print("ETL etapp 3/3: Laadimine analytics kihti")
+        inserted_rows = load_final_rows_from_intermediate(conn)
+        print(
+            f"- Laadisin analytics.user_profile tabelisse {inserted_rows} rida."
         )
         print("Valmis.")
     finally:
