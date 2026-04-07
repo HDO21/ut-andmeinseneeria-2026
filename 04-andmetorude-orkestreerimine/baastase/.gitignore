@@ -2,4 +2,3 @@ logs/*
 !logs/.gitkeep
 __pycache__/
 .env
-04_loeng.pdf
