@@ -38,19 +38,34 @@ def get_connection():
         dbname=os.environ.get("DB_NAME", "praktikum"),
     )
 
+def normalize_email(email):
+    """Transform: muuda e-post ühendamiseks sobivaks."""
+    if email is None:
+        return None
+    return email.strip().lower()
 
-def normalize_email(value):
-    """Transform: muuda e-post ühendamiseks sobivaks.
-
-    TODO:
-    1. Kui väärtus on None, tagasta None.
-    2. Eemalda algusest ja lõpust tühikud.
-    3. Muuda tulemus väikesteks tähtedeks.
-    """
+    
     raise NotImplementedError("Tee normalize_email funktsioon valmis.")
 
-
 def fetch_api_users():
+    response = requests.get(API_URL, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+
+    users = []
+    for item in data:
+        users.append(
+            {
+                "user_id": item["id"],
+                "full_name": " ".join(item["name"].split()),
+                "username": item["username"],
+                "email": item["email"],
+                "city": item["address"]["city"],
+                "company_name": item["company"]["name"],
+            }
+        )
+
+    return users
     """Extract: too kasutajad API-st ja jäta alles vajalikud väljad.
 
     Tagasta list sõnastikest kujul:
@@ -73,6 +88,20 @@ def fetch_api_users():
 
 
 def read_notification_preferences():
+    eelistused = []
+    with open(PREFERENCES_PATH, 'r') as file:
+        json_andmed = json.load(file)
+        for i in json_andmed:
+            eelistused.append(
+            {
+                "email": i["email"],
+                "newsletter_opt_in": i["newsletter_opt_in"],
+                "preferred_channel": i["preferred_channel"],
+                "updated_at": i["updated_at"]
+            }
+        )
+    return eelistused
+    
     """Extract: loe JSON failist teavituseelistused.
 
     Tagasta list sõnastikest kujul:
@@ -89,6 +118,7 @@ def read_notification_preferences():
     3. Tagasta loetud list.
     """
     raise NotImplementedError("Tee read_notification_preferences funktsioon valmis.")
+
 
 
 def load_api_users(conn, api_users):
@@ -180,8 +210,32 @@ def build_preference_lookup(preferences):
 
 
 def build_final_rows(api_users, status_lookup, preference_lookup):
-    """Transform: ehita lõpptabeli read.
+    final_rows = []
 
+    for user in api_users:
+        normalized_email = normalize_email(user["email"])
+
+        status = status_lookup.get(normalized_email, {})
+        preference = preference_lookup.get(normalized_email, {})
+
+        final_rows.append(
+            (
+                user["user_id"],
+                user["full_name"],
+                user["username"],
+                normalized_email,
+                user["city"],
+                user["company_name"],
+                status.get("account_status"),
+                status.get("source_system"),
+                preference.get("newsletter_opt_in"),
+                preference.get("preferred_channel"),
+            )
+        )
+
+    return final_rows
+
+    """Transform: ehita lõpptabeli read.
     TODO:
     1. Käi kõik API kasutajad läbi.
     2. Võta kasutaja e-post ja puhasta see normalize_email abil.
