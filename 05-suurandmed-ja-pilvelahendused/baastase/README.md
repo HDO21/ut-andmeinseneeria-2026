@@ -122,6 +122,11 @@ Praktikumi põhirada ise toimub Databricksi veebiliideses. Kohalikust repositoor
 Selles kaustas on sulle oluline eelkõige see juhend:
 
 - [`README.md`](./README.md)
+- [`notebooks/praktikum_05_databricks.py`](./notebooks/praktikum_05_databricks.py) on Databricksi notebooki lähtefail praktilise osa jaoks
+
+Kui tahad praktilise osa Databricksi valmis notebookina üles laadida, kasuta faili [`notebooks/praktikum_05_databricks.py`](./notebooks/praktikum_05_databricks.py).
+
+See fail on Databricksi source-formaadis notebook. Selle saad Databricksi tööruumi importida `Workspace` vaates valikuga `Import` või lihtsalt faili tööruumi lohistades.
 
 ## Kuidas notebooki lahtrid töötavad?
 
@@ -140,7 +145,7 @@ Selles juhendis kehtib lihtne reegel:
 - käivitab praeguse lahtri;
 - liigub järgmisse lahtrisse või loob vajadusel uue.
 
-Kui mõni lahter annab vea, siis peatu ja lahenda see enne järgmise lahtri käivitamist. Notebookis sõltuvad hilisemad sammud sageli sellest, et varasemad muutujad, näiteks `trips`, `summary` või `target_table`, oleksid juba loodud.
+Kui mõni lahter annab vea, siis peatu ja lahenda see enne järgmise lahtri käivitamist. Notebookis sõltuvad hilisemad sammud sageli sellest, et varasemad muutujad, näiteks `trips`, `summary` või `target_table_identifier`, oleksid juba loodud.
 
 ## Kus see praktikum toimub?
 
@@ -377,22 +382,32 @@ workspace_catalog = "<kirjuta siia oma workspace catalogi nimi>"
 # Selle praktikumi skeemi nimi.
 workspace_schema = "praktikum_05"
 
+# Koostame catalogi ja skeemi SQL-kujud eraldi muutujatesse.
+# Nii jäävad päringud loetavamaks ja Databricksi lint oskab neid paremini tõlgendada.
+catalog_identifier = f"`{workspace_catalog}`"
+schema_identifier = f"`{workspace_schema}`"
+
 # CREATE SCHEMA IF NOT EXISTS loob skeemi ainult siis,
 # kui seda veel olemas ei ole.
-spark.sql(
-    f"CREATE SCHEMA IF NOT EXISTS `{workspace_catalog}`.`{workspace_schema}`"
-)
+create_schema_sql = f"CREATE SCHEMA IF NOT EXISTS {catalog_identifier}.{schema_identifier}"
+spark.sql(create_schema_sql)
 
 # SHOW SCHEMAS näitab, millised skeemid selles catalogis olemas on.
-display(spark.sql(f"SHOW SCHEMAS IN `{workspace_catalog}`"))
+show_schemas_sql = f"SHOW SCHEMAS IN {catalog_identifier}"
+display(spark.sql(show_schemas_sql))
 ```
 
 Mida see teeb?
 
 - salvestab sinu workspace catalogi nime muutujasse `workspace_catalog`;
 - määrab praktikumi skeemi nimeks `praktikum_05`;
+- loob SQL-identifikaatorid muutujates `catalog_identifier` ja `schema_identifier`;
 - loob selle skeemi, kui seda veel ei ole;
 - näitab skeemide loendit, et saaksid tulemust kontrollida.
+
+Miks me koostame SQL laused eraldi muutujates?
+
+Databricksi `Python` lint võib mõnikord näidata eksitavat süntaksiviga mustri `spark.sql(f"...")` juures, kuigi kood ise töötab. Kui hoiad SQL lause esmalt eraldi muutujas ja alles siis annad selle funktsioonile `spark.sql(...)`, jääb kood õppija jaoks selgemaks.
 
 Õnnestumise märk:
 
@@ -551,26 +566,27 @@ username_safe = spark.sql(
     "SELECT regexp_replace(session_user(), '[^a-zA-Z0-9]', '_') AS username"
 ).first()["username"]
 
-# Ehita täielik tabelinimi kujul catalog.schema.table.
-# Backtick märgid aitavad juhul, kui catalogi nimes on erimärke.
-target_table = (
-    f"`{workspace_catalog}`.`{workspace_schema}`.user_{username_safe}_taxi_trip_summary"
-)
+# Tabeli enda nimi ilma catalogi ja skeemita.
+target_table_name = f"user_{username_safe}_taxi_trip_summary"
+
+# Koostame täieliku SQL-identifikaatori kujul catalog.schema.table.
+# Iga osa on eraldi backtickides, et erimärgid ei tekitaks viga.
+target_table_identifier = f"{catalog_identifier}.{schema_identifier}.`{target_table_name}`"
 
 # write.mode("overwrite") tähendab:
 # kui tabel on juba olemas, kirjutatakse see samanimelise uue sisuga üle.
 # saveAsTable(...) salvestab DataFrame'i Databricksis tabelina.
-summary.write.mode("overwrite").saveAsTable(target_table)
+summary.write.mode("overwrite").saveAsTable(target_table_identifier)
 
 # print(...) näitab sulle loodud tabeli nime.
-print(f"Loodi tabel: {target_table}")
+print(f"Loodi tabel: {target_table_identifier}")
 ```
 
 Mida see teeb?
 
 - võtab sinu kasutajanimest turvalise tabelinime osa;
 - ehitab täieliku tabelinime kujul `catalog.schema.table`;
-- paneb catalogi nime ümber vajadusel jutumärgid, et erimärgid ei tekitaks viga;
+- paneb catalogi, skeemi ja tabeli nime SQL-is korrektsesse kujusse;
 - kirjutab `summary` tulemuse tabeliks;
 - kasutab `overwrite` režiimi, et saaksid sama sammu turvaliselt uuesti käivitada.
 
@@ -599,7 +615,8 @@ Loo uus lahter. Kleebi kogu koodiplokk ühte lahtrisse. Käivita see klahvidega 
 ```python
 # Loeme äsja loodud tabeli tagasi sisse SQL päringuga,
 # et kontrollida salvestuse tulemust.
-display(spark.sql(f"SELECT * FROM {target_table} ORDER BY trip_count DESC"))
+select_target_table_sql = f"SELECT * FROM {target_table_identifier} ORDER BY trip_count DESC"
+display(spark.sql(select_target_table_sql))
 ```
 
 Mida see teeb?
@@ -625,7 +642,8 @@ Loo uus lahter. Kleebi kogu koodiplokk ühte lahtrisse. Käivita see klahvidega 
 ```python
 # DESCRIBE DETAIL näitab tabeli tehnilisi omadusi,
 # sealhulgas seda, mis formaati tabel kasutab.
-display(spark.sql(f"DESCRIBE DETAIL {target_table}"))
+describe_target_table_sql = f"DESCRIBE DETAIL {target_table_identifier}"
+display(spark.sql(describe_target_table_sql))
 ```
 
 Mida see teeb?
@@ -732,7 +750,7 @@ Siit saab juba edasi liikuda keerukamate teemade juurde:
 ### Pärast tabeli salvestamist
 
 - väljundis kuvatakse täielik tabelinimi;
-- `SELECT * FROM {target_table}` töötab;
+- tabeli tagasilugemine muutujaga `target_table_identifier` töötab;
 - tabel on Catalog vaates olemas.
 
 ### Pärast job'i käivitust
@@ -761,13 +779,13 @@ Tõenäoline põhjus:
 
 - tabeli nimi on vale;
 - kasutad valet catalogi või skeemi;
-- `target_table` väärtus ei saanud õigesti loodud.
+- `target_table_identifier` väärtus ei saanud õigesti loodud.
 
 Lahendus:
 
 - kontrolli, et `samples.nyctaxi.trips` oleks kirjutatud täpselt nii;
 - kontrolli, et `workspace_catalog` oleks sinu enda catalog, mitte `samples`;
-- prindi vajadusel `target_table` uuesti välja.
+- prindi vajadusel `target_table_identifier` uuesti välja.
 
 ### Sümptom: tabelit ei saa kirjutada
 
@@ -979,12 +997,15 @@ Loo uus lahter. Kleebi kogu koodiplokk ühte lahtrisse. Käivita see klahvidega 
 workspace_catalog = "<kirjuta siia oma workspace catalogi nimi>"
 workspace_schema = "praktikum_05"
 
-# DROP SCHEMA ... CASCADE kustutab skeemi ja selle sees olevad tabelid.
-spark.sql(
-    f"DROP SCHEMA IF EXISTS `{workspace_catalog}`.`{workspace_schema}` CASCADE"
-)
+# Koostame catalogi ja skeemi SQL-kujud eraldi muutujatesse.
+catalog_identifier = f"`{workspace_catalog}`"
+schema_identifier = f"`{workspace_schema}`"
 
-print(f"Kustutati skeem: `{workspace_catalog}`.`{workspace_schema}`")
+# DROP SCHEMA ... CASCADE kustutab skeemi ja selle sees olevad tabelid.
+drop_schema_sql = f"DROP SCHEMA IF EXISTS {catalog_identifier}.{schema_identifier} CASCADE"
+spark.sql(drop_schema_sql)
+
+print(f"Kustutati skeem: {catalog_identifier}.{schema_identifier}")
 ```
 
 Mida see teeb?
