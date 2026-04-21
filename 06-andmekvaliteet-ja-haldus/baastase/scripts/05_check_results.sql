@@ -2,14 +2,17 @@
 -- Mõte on lihtne:
 -- üks käsk, mitu vaadet tulemusele.
 
+-- Vaata, mitu tootesnapshoti rida laadisime.
 SELECT
     COUNT(*) AS product_snapshot_rows
 FROM staging.product_snapshots_raw;
 
+-- Vaata, mitu poe snapshot-rida laadisime.
 SELECT
     COUNT(*) AS store_snapshot_rows
 FROM staging.store_snapshots_raw;
 
+-- Vaata, mitu tellimuse rida tuli iga kuupäeva kohta.
 SELECT
     order_date,
     COUNT(*) AS order_rows
@@ -17,6 +20,7 @@ FROM staging.orders_raw
 GROUP BY order_date
 ORDER BY order_date;
 
+-- Vaata kogu tootedimensiooni sisu koos kehtivusvahemikega.
 SELECT
     product_id,
     product_name,
@@ -27,12 +31,14 @@ SELECT
 FROM intermediate.dim_products_scd
 ORDER BY product_id, valid_from;
 
+-- Vaata kvaliteedireeglite lühikokkuvõtet.
 SELECT
     rule_name,
     failed_rows
 FROM quality.order_issue_summary
 ORDER BY failed_rows DESC, rule_name;
 
+-- Vaata mõnda vigast rida koos selle juurde leitud reeglinimedega.
 SELECT
     o.order_date,
     o.order_id,
@@ -53,6 +59,7 @@ GROUP BY
     o.unit_price_eur
 ORDER BY o.order_date, o.order_id NULLS LAST;
 
+-- Vaata puhastatud ja tagasi lükatud ridade koondnäitajaid.
 SELECT
     raw_order_rows,
     clean_order_rows,
@@ -61,6 +68,7 @@ SELECT
     rejected_row_percent
 FROM analytics.quality_overview;
 
+-- Vaata näidet puhastatud analüütikakihi ridadest.
 SELECT
     sales_date,
     store_name,
@@ -70,6 +78,7 @@ SELECT
 FROM analytics.daily_product_sales_clean
 ORDER BY sales_date, store_name, product_name;
 
+-- Vaata andmevara registri sisu.
 SELECT
     asset_name,
     owner_name,
@@ -78,6 +87,7 @@ SELECT
 FROM governance.data_asset_registry
 ORDER BY asset_name;
 
+-- Vaata, millistele tabelitele lisasime kirjelduse.
 SELECT
     n.nspname AS schema_name,
     c.relname AS table_name,

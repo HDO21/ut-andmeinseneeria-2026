@@ -11,6 +11,9 @@ DROP TABLE IF EXISTS quality.orders_clean;
 
 CREATE TABLE quality.order_rule_results AS
 WITH base_orders AS (
+    -- Teeme toorandmetest ühtlasema lähtekuju.
+    -- Näiteks tühjad tekstid muudame siin `NULL` väärtusteks,
+    -- et puuduvate väljade kontrollid oleksid lihtsamad.
     SELECT
         o.staging_row_id,
         NULLIF(TRIM(o.order_id), '') AS order_id_clean,
@@ -25,6 +28,7 @@ WITH base_orders AS (
     FROM staging.orders_raw AS o
 ),
 duplicate_order_ids AS (
+    -- Leiame tellimuse ID-d, mis esinevad rohkem kui üks kord.
     SELECT order_id_clean
     FROM base_orders
     WHERE order_id_clean IS NOT NULL
@@ -32,6 +36,8 @@ duplicate_order_ids AS (
     HAVING COUNT(*) > 1
 ),
 product_match AS (
+    -- Proovime iga tellimuse siduda just selle tooteversiooniga,
+    -- mis oli tellimuse kuupäeval kehtiv.
     SELECT
         b.staging_row_id,
         p.product_version_key,
@@ -42,6 +48,7 @@ product_match AS (
        AND b.order_date BETWEEN p.valid_from AND p.valid_to
 ),
 store_match AS (
+    -- Sama sidumine poe dimensiooniga.
     SELECT
         b.staging_row_id,
         s.store_version_key
@@ -172,6 +179,8 @@ CREATE INDEX idx_order_rule_results_rule
     ON quality.order_rule_results (rule_name);
 
 CREATE TABLE quality.order_issue_summary AS
+-- Koondame detailse veatabeli lühikeseks kokkuvõtteks,
+-- et õppijal oleks lihtsam näha, millised reeglid kõige rohkem ridu mõjutavad.
 SELECT
     rule_name,
     COUNT(*) AS failed_rows
@@ -181,6 +190,7 @@ ORDER BY failed_rows DESC, rule_name;
 
 CREATE TABLE quality.orders_clean AS
 WITH base_orders AS (
+    -- Alustame samast ühtlustatud lähtekujust nagu veakontrollis.
     SELECT
         o.staging_row_id,
         NULLIF(TRIM(o.order_id), '') AS order_id,

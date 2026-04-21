@@ -11,9 +11,9 @@ ENV PYTHONUNBUFFERED=1 \
     PAGER=less \
     LESS=-SFXR
 
-# Selles konteineris teeme kogu praktikumi käsitöö:
-# käivitame Pythoni skripti, kasutame psql klienti
-# ja loeme source_data failid sisse samast konteinerist.
+# Selles konteineris käivitame praktikumi Pythoni skripti,
+# kasutame psql klienti ja loeme source_data failid sisse
+# samast konteinerist.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends bash less locales postgresql-client tzdata \
     # Debian slim baaspildis ei ole eesti locale vaikimisi loodud.

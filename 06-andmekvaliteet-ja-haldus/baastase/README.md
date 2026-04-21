@@ -29,7 +29,7 @@
 - [Kontrollpunktid](#kontrollpunktid)
 - [Levinud vead ja lahendused](#levinud-vead-ja-lahendused)
 - [Kokkuvõte](#kokkuvõte)
-- [Valikuline lisaharjutus](#valikuline-lisaharjutus)
+- [Valikulised lisaharjutused](#valikulised-lisaharjutused)
 - [Koristamine](#koristamine)
 
 ## Praktikumi eesmärk
@@ -381,7 +381,7 @@ Oluline sarnasus jääb alles:
 - mõlemal nädalal on mitu käsuga käivitatavat sammu;
 - mõlemal nädalal saab õppija käivitada kas kogu töövoo korraga või ainult need etapid, mida on vaja uuesti teha.
 
-See on teadlik valik.
+Selline jaotus aitab sul töövoogu sammhaaval jälgida ja vajaduse korral uuesti käivitada ainult selle osa, mida parasjagu vajad.
 Kui tahad hiljem nende praktikute ideid omavahel siduda, siis saad võtta 4. praktikumi töövoo ja täiendada seda 6. praktikumi kvaliteedisammudega.
 Näiteks võiksid tulevikus lisada 4. praktikumi torusse siit pärit käsud `run-quality` või `add-metadata`.
 
@@ -588,7 +588,6 @@ Mida see teeb?
 - kirjutab need tabelisse `staging.orders_raw`;
 - tühjendab enne `staging.orders_raw` tabeli ja laeb selle uuesti ainult valitud vahemiku ridadest.
 
-See on teadlik valik.
 Nii annab sama käsk sama sisendiga uuesti käivitades sama tulemuse.
 Teisisõnu on see samm praktikumi mõttes idempotentne.
 
@@ -783,6 +782,9 @@ Käivita koondpäringute fail:
 docker compose exec python psql -f scripts/05_check_results.sql
 ```
 
+Kui väljund avaneb lehekülgede kaupa, siis saad liikuda nooleklahvidega või tühikuklahviga.
+Väljumiseks vajuta klahvi `q`.
+
 Mida see teeb?
 
 See fail koondab kokku kõige olulisemad kontrollpäringud:
@@ -925,7 +927,7 @@ Sama loogika on ka suuremates tööriistades.
 Edasijõudnute rajal näed, kuidas OpenMetadata aitab neid samu mõtteid tsentraalselt hallata.
 Baastasemes oli oluline kõigepealt aru saada, mida me üldse tahame kontrollida ja kirjeldada.
 
-## Valikuline lisaharjutus
+## Valikulised lisaharjutused
 
 Lisaharjutused on iseseisvaks katsetamiseks ja mõtlemiseks. Neid ei pea praktikumi jooksul ära tegema.
 
@@ -977,7 +979,7 @@ Kirjuta endale lühidalt üles:
 
 - kust need andmed tulevad;
 - milliseid kvaliteedikontrolle praegu tehakse;
-- kus need kontrollid elavad: lähteallikas, `ETL`, andmeladu, raport või käsitöö;
+- kus need kontrollid elavad: lähteallikas, `ETL`, andmeladu, raport või käsitsi tehtud kontroll;
 - kes saab veast teada ja mida ta seejärel teeb.
 
 Lõpuks hinda, milline üks kontroll annaks teie töövoos kõige rohkem väärtust, aga puudub veel.

@@ -30,6 +30,8 @@ SOURCE_START_DATE = date.fromisoformat(os.environ.get("SOURCE_START_DATE", "2026
 SOURCE_END_DATE = date.fromisoformat(os.environ.get("SOURCE_END_DATE", "2026-04-30"))
 SEED_PREFIX = "praktikum-06-quality-source-api"
 
+# Hoiame toodete kohta kahte kuuseisu.
+# Nii saab sama toode või hind märtsi ja aprilli vahel muutuda.
 MARCH_PRODUCTS = [
     {"product_id": "P-100", "base_price_eur": 24.90},
     {"product_id": "P-200", "base_price_eur": 34.50},
@@ -45,6 +47,8 @@ APRIL_PRODUCTS = [
     {"product_id": "P-500", "base_price_eur": 39.00},
 ]
 
+# Sama mõte poodide kohta:
+# aprillis võib lisanduda uus pood või muutuda olemasoleva poe kirjeldus.
 MARCH_STORES = [
     {"store_id": "S-TLN"},
     {"store_id": "S-TRT"},
@@ -199,6 +203,8 @@ def inject_known_quality_issues(logical_date: date, orders: list[dict]) -> None:
 
     Need vead on siia pandud selleks, et kvaliteedikontrollid päriselt midagi leiaksid.
     """
+    # Iga valitud kuupäev tekitab ühe kindla tüüpi vea.
+    # Nii on hiljem lihtne kontrollida, kas kvaliteedireeglid leiavad just need read üles.
     if logical_date == date(2026, 4, 1):
         orders[2]["product_id"] = "P-999"
     elif logical_date == date(2026, 4, 2):
@@ -336,6 +342,9 @@ class RequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # Toetame kahte teed:
+        # `/orders` on praktikumi põhiraja tee
+        # ja `/api/orders` aitab seda allikat mugavamalt võrrelda 4. praktikumi API-ga.
         if parsed.path in {"/orders", "/api/orders"}:
             query = parse_qs(parsed.query)
             logical_date_text = query.get("date", [None])[0]

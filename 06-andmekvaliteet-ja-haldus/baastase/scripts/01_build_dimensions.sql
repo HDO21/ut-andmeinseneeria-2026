@@ -9,6 +9,9 @@ DROP TABLE IF EXISTS intermediate.dim_stores_scd;
 
 CREATE TABLE intermediate.dim_products_scd AS
 WITH ordered_snapshots AS (
+    -- Võtame ühe toote kõik kuuseisud kronoloogilisse järjekorda.
+    -- `LEAD(...)` aitab vaadata järgmise snapshoti alguskuupäeva.
+    -- Selle põhjal saame arvutada, millal praegune versioon lõpeb.
     SELECT
         product_id,
         TRIM(product_name) AS product_name,
@@ -22,6 +25,8 @@ WITH ordered_snapshots AS (
     FROM staging.product_snapshots_raw
 )
 SELECT
+    -- Koostame tehnilise võtme kujul `toode:alguskuupäev`.
+    -- Nii on igal versioonil oma üheselt mõistetav tunnus.
     product_id || ':' || TO_CHAR(valid_from, 'YYYY-MM-DD') AS product_version_key,
     product_id,
     product_name,
@@ -40,6 +45,9 @@ CREATE INDEX idx_dim_products_scd_lookup
 
 CREATE TABLE intermediate.dim_stores_scd AS
 WITH ordered_snapshots AS (
+    -- Sama loogika poodide jaoks:
+    -- järjestame ühe poe versioonid ajas
+    -- ja leiame järgmise versiooni alguse.
     SELECT
         store_id,
         TRIM(store_name) AS store_name,
@@ -53,6 +61,7 @@ WITH ordered_snapshots AS (
     FROM staging.store_snapshots_raw
 )
 SELECT
+    -- Ka poeversioonile teeme oma tehnilise võtme.
     store_id || ':' || TO_CHAR(valid_from, 'YYYY-MM-DD') AS store_version_key,
     store_id,
     store_name,
