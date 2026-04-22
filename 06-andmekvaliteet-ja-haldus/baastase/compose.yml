@@ -58,6 +58,25 @@ services:
     working_dir: /app
     tty: true
 
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    container_name: praktikum-dbt-06-base
+    env_file:
+      - .env
+    environment:
+      DBT_PROFILES_DIR: /dbt
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./dbt_project:/dbt
+    working_dir: /dbt
+    ports:
+      - "${DBT_DOCS_PORT_HOST:-18086}:8080"
+    tty: true
+
 volumes:
   pgdata_06_base:
     name: praktikum-db-06-base-pgdata
