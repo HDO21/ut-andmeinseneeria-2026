@@ -29,6 +29,7 @@
 - [Kontrollpunktid](#kontrollpunktid)
 - [Levinud vead ja lahendused](#levinud-vead-ja-lahendused)
 - [Kokkuvõte](#kokkuvõte)
+- [Loodud andmebaasi ER-diagramm](#loodud-andmebaasi-er-diagramm)
 - [Valikulised lisaharjutused](#valikulised-lisaharjutused)
 - [Koristamine](#koristamine)
 
@@ -164,6 +165,7 @@ Kõik allpool toodud suhtelised failiteed eeldavad, et asud kaustas `06-andmekva
 - [`compose.yml`](./compose.yml) kirjeldab andmebaasi, kohaliku API ja Pythoni konteinerit
 - [`.env.example`](./.env.example) sisaldab praktikumi vaikimisi keskkonnamuutujaid
 - [`Dockerfile.python`](./Dockerfile.python) ehitab Pythoni konteineri, kus on nii `Python` kui ka `psql` klient
+- [`Dockerfile.dbt`](./Dockerfile.dbt) ehitab valikulise `dbt` konteineri lisaülesande jaoks
 - [`init/01_create_raw_objects.sql`](./init/01_create_raw_objects.sql) loob `staging`, `intermediate`, `quality`, `analytics` ja `governance` skeemid ning toortabelid
 - [`source_api/server.py`](./source_api/server.py) käivitab kohaliku tellimuste `API`
 - [`source_data/products_2026_03.csv`](./source_data/products_2026_03.csv) on märtsi tootesnapshot
@@ -178,6 +180,8 @@ Kõik allpool toodud suhtelised failiteed eeldavad, et asud kaustas `06-andmekva
 - [`scripts/04_add_metadata.sql`](./scripts/04_add_metadata.sql) lisab tabelikirjeldused ja andmevara registri kirjed
 - [`scripts/05_check_results.sql`](./scripts/05_check_results.sql) koondab kontrollpäringud
 - [`scripts/99_reset.sql`](./scripts/99_reset.sql) puhastab praktikumi tabelid ilma Docker mahtu kustutamata
+- [`dbt_project/`](./dbt_project) sisaldab valikulise `dbt` lisaülesande valmis projekti
+- [`LISAULESANNE_DBT.md`](./LISAULESANNE_DBT.md) juhendab, kuidas sama praktikumi kvaliteediahel viia `dbt` alla
 
 ## Kus praktikumi failid asuvad?
 
@@ -927,6 +931,114 @@ Sama loogika on ka suuremates tööriistades.
 Edasijõudnute rajal näed, kuidas OpenMetadata aitab neid samu mõtteid tsentraalselt hallata.
 Baastasemes oli oluline kõigepealt aru saada, mida me üldse tahame kontrollida ja kirjeldada.
 
+## Loodud andmebaasi ER-diagramm
+
+Praktikumi lõpuks on andmebaasis olemas järgmine loogiline skeem.
+
+See joonis näitab peamisi seoseid tabelite vahel.
+Mõni neist seostest on andmebaasis päris võtme kaudu, mõni on loogiline seos, mida kasutame `JOIN`-ides ja kvaliteedireeglites.
+
+Pane tähele ka seda, et tabel `governance.data_asset_registry` on skeemis olemas, kuid ta ei ole teiste tabelitega seotud välisvõtmete kaudu.
+Ta hoiab andmevarade kirjeldusi tekstiväljade kaudu.
+
+Kõige kindlam on seda joonist vaadata esmalt GitHubi veebilehel, kus Mermaid plokid peaksid avanema otse joonisena.
+Kui tahad näha sama joonist ka `VS Code` eelvaates, võid soovi korral paigaldada lisa `Markdown Preview Mermaid Support`.
+Arvesta siiski, et GitHubi ja `VS Code` eelvaate välimus võib veidi erineda.
+
+```mermaid
+erDiagram
+    staging_product_snapshots_raw {
+        DATE snapshot_month PK
+        TEXT product_id PK
+        TEXT product_name
+        NUMERIC base_price_eur
+    }
+
+    staging_store_snapshots_raw {
+        DATE snapshot_month PK
+        TEXT store_id PK
+        TEXT store_name
+        TEXT region
+    }
+
+    staging_orders_raw {
+        BIGSERIAL staging_row_id PK
+        TEXT order_id
+        DATE order_date
+        TEXT store_id
+        TEXT product_id
+    }
+
+    intermediate_dim_products_scd {
+        TEXT product_version_key PK
+        TEXT product_id
+        DATE valid_from
+        DATE valid_to
+        BOOLEAN is_current
+    }
+
+    intermediate_dim_stores_scd {
+        TEXT store_version_key PK
+        TEXT store_id
+        DATE valid_from
+        DATE valid_to
+        BOOLEAN is_current
+    }
+
+    quality_order_rule_results {
+        BIGINT staging_row_id
+        TEXT rule_name
+        TEXT issue_message
+        TIMESTAMPTZ checked_at
+    }
+
+    quality_order_issue_summary {
+        TEXT rule_name PK
+        INTEGER failed_rows
+    }
+
+    quality_orders_clean {
+        BIGINT staging_row_id PK
+        TEXT order_id
+        TEXT store_version_key
+        TEXT product_version_key
+        NUMERIC line_amount_eur
+    }
+
+    analytics_daily_product_sales_clean {
+        DATE sales_date PK
+        TEXT store_id PK
+        TEXT product_id PK
+        NUMERIC gross_sales_eur
+    }
+
+    analytics_quality_overview {
+        INTEGER raw_order_rows
+        INTEGER clean_order_rows
+        INTEGER rejected_row_count
+        NUMERIC rejected_row_percent
+    }
+
+    governance_data_asset_registry {
+        TEXT asset_name PK
+        TEXT asset_layer
+        TEXT owner_name
+        TEXT steward_name
+    }
+
+    staging_product_snapshots_raw ||--o{ intermediate_dim_products_scd : "annab aluse"
+    staging_store_snapshots_raw ||--o{ intermediate_dim_stores_scd : "annab aluse"
+    staging_orders_raw ||--o{ quality_order_rule_results : "kontrollitakse"
+    staging_orders_raw ||--o{ quality_orders_clean : "puhastub"
+    intermediate_dim_products_scd ||--o{ quality_orders_clean : "toote versioon"
+    intermediate_dim_stores_scd ||--o{ quality_orders_clean : "poe versioon"
+    quality_order_rule_results ||--o{ quality_order_issue_summary : "koondub"
+    quality_orders_clean ||--o{ analytics_daily_product_sales_clean : "koondub"
+    staging_orders_raw ||--|| analytics_quality_overview : "toorread"
+    quality_orders_clean ||--|| analytics_quality_overview : "puhtad read"
+    quality_order_rule_results ||--|| analytics_quality_overview : "veatulemused"
+```
+
 ## Valikulised lisaharjutused
 
 Lisaharjutused on iseseisvaks katsetamiseks ja mõtlemiseks. Neid ei pea praktikumi jooksul ära tegema.
@@ -996,6 +1108,20 @@ Proovi vastata järgmistele küsimustele:
 - kas uus töötaja saaks neist andmetest aru ka ilma suulise selgituseta.
 
 Kui mõni vastus on `ei`, siis mõtle, kas probleemi lahendaks parem dokumentatsioon, lihtne register või päris andmekataloog.
+
+5. Proovi sama praktikumi `dbt` rajaga.
+
+Kui tahad näha, kuidas sama kvaliteediahel muutub `dbt` abil paremini hallatavaks, ava eraldi juhend:
+
+- [Lisaülesanne: vii 6. praktikumi kvaliteediahel `dbt` alla](./LISAULESANNE_DBT.md)
+
+Selles lisarajas:
+
+- kasutad samu `staging` allikaid, mis põhirajal;
+- ehitad dimensioonid, kvaliteeditabelid ja analüütikakihi `dbt` mudelitena;
+- käivitad kvaliteeditestid `dbt test` ja `dbt build` abil;
+- genereerid `dbt docs` vaate, kust on näha `source()` ja `ref()` seosed;
+- saad sujuva silla edasijõudnute `OpenMetadata` praktikumi juurde.
 
 ## Koristamine
 
