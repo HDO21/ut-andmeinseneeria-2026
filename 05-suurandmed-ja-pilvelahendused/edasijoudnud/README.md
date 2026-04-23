@@ -57,7 +57,7 @@ Kui näed tabelit viie reaga, on kõik korras. Kui näed viga "Table not found",
 **Azure Open Datasets:**
 
 ```python
-yellow_path = "wasbs://nyctlc@azureopendatastorage.blob.core.windows.net/"
+yellow_path = "wasbs://nyctlc@azureopendatastorage.blob.core.windows.net/yellow"
 df = spark.read.parquet(yellow_path)
 print("Ridu:", df.count())
 df.printSchema()

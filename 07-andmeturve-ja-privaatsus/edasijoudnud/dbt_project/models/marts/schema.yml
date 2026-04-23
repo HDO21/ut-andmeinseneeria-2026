@@ -1,0 +1,103 @@
+version: 2
+
+models:
+  - name: dim_users
+    description: "Kasutajate dimensioonitabel - toorandmed, piiratud ligipaasuks (auditor)"
+    config:
+      grants:
+        select: ['auditor']
+    columns:
+      - name: user_key
+        description: "Kasutaja unikaalne tunnusvoti (UUID)"
+        meta:
+          pii: false
+        tests:
+          - unique
+          - not_null
+      - name: user_id
+        description: "Kasutaja numbriline ID"
+        meta:
+          pii: false
+        tests:
+          - unique
+          - not_null
+      - name: first_name
+        description: "Eesnimi (PII)"
+        meta:
+          pii: true
+          mask: mask_varchar
+          allowed_roles: ['analyst', 'regional_manager', 'auditor']
+      - name: last_name
+        description: "Perenimi (PII)"
+        meta:
+          pii: true
+          mask: mask_varchar
+          allowed_roles: ['analyst', 'regional_manager', 'auditor']
+      - name: full_name
+        description: "Taisnimi (PII)"
+        meta:
+          pii: true
+          mask: mask_varchar
+          allowed_roles: ['analyst', 'regional_manager', 'auditor']
+      - name: email
+        description: "E-posti aadress (PII - tundlikuim veerg)"
+        meta:
+          pii: true
+          mask: mask_email
+          allowed_roles: ['analyst', 'auditor']
+      - name: city
+        description: "Linn (PII)"
+        meta:
+          pii: true
+          mask: mask_varchar
+          allowed_roles: ['analyst', 'marketing', 'auditor']
+      - name: country
+        description: "Riik - kasutatakse RLS filtreerimiseks"
+        meta:
+          pii: false
+      - name: registered_date
+        description: "Registreerumise kuupaev - kuunaepsusega maskeeritav"
+        meta:
+          pii: false
+          mask: mask_date
+
+  - name: fct_posts
+    description: "Postituste faktitabel - toorandmed, piiratud ligipaasuks (auditor)"
+    config:
+      grants:
+        select: ['auditor']
+    columns:
+      - name: post_id
+        meta:
+          pii: false
+        tests:
+          - unique
+          - not_null
+      - name: user_key
+        meta:
+          pii: false
+        tests:
+          - not_null
+      - name: author_name
+        description: "Autori taisnimi (PII)"
+        meta:
+          pii: true
+          mask: mask_varchar
+          allowed_roles: ['analyst', 'auditor']
+      - name: title
+        description: "Postituse pealkiri"
+        meta:
+          pii: false
+          allowed_roles: ['analyst', 'auditor']
+      - name: body
+        description: "Postituse sisu"
+        meta:
+          pii: false
+          allowed_roles: ['analyst', 'auditor']
+      - name: body_length
+        description: "Postituse sisu pikkus margis"
+        meta:
+          pii: false
+      - name: loaded_at
+        meta:
+          pii: false

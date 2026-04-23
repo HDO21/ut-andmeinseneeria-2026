@@ -1,0 +1,24 @@
+name: praktikum_07
+version: "1.0.0"
+profile: praktikum_07
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  praktikum_07:
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+    secured:
+      +materialized: view
+      +schema: secured
+
+on-run-start:
+  - "{{ ensure_pgaudit_extension() }}"
