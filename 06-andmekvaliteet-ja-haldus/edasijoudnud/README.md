@@ -48,7 +48,7 @@ OpenMetadata on avatud lähtekoodiga platvorm, mis ühendab need võimekused üh
 | Mõiste | Selgitus |
 |--------|----------|
 | **OpenMetadata** | Avatud lähtekoodiga andmekataloog ja metaandmete halduse platvorm. Koondab andmeallikad, skeemad, kirjeldused, kvaliteedikontrollid ja pärinevuse ühte kasutajaliidesse. |
-| **Metadata Ingestion** | Automaatne metaandmete kogumine andmeallikatest. OpenMetadata ühendub andmebaasiga ja tõmbab välja skeemad, tabelid, veerud ja nende omadused. |
+| **Metadata Ingestion (Agents)** | Automaatne metaandmete kogumine andmeallikatest. OpenMetadata ühendub andmebaasiga ja tõmbab välja skeemad, tabelid, veerud ja nende omadused. |
 | **Data Lineage** | Andmete pärinevus — visuaalne ülevaade, kust andmed tulevad, milliseid teisendusi läbivad ja kuhu jõuavad. |
 | **Business Glossary** | Ärisõnastik — ühised terminid ja definitsioonid, mis seovad ärikeele tehniliste andmevaradega. |
 | **PII (Personally Identifiable Information)** | Isikuandmed — andmed, mille kaudu saab isikut tuvastada (nimi, e-post, aadress jne). Vajavad erilist kaitset. |
@@ -237,15 +237,17 @@ Oodatav tulemus: kõik kontrollid (Database, Schemas, Tables, Views) on rohelise
 > - **Diagnostika:** kontrolli, et PostgreSQL konteiner töötab (`docker compose ps`) ja et kasutajanimi/parool vastavad `.env` failis olevatele väärtustele.
 > - **Lahendus:** kasuta hosti `db` (mitte `localhost`). OpenMetadata ingestion konteiner asub samas Docker võrgus ja ühendub teenuse nime kaudu.
 
-### Metadata Ingestion pipeline käivitamine
+### Metadata Ingestion pipeline (Agent) käivitamine
 
-Pärast teenuse salvestamist suunatakse sind ingestion seadistuse lehele.
+Juhul kui automaatselt pole loodud Metadata Agent, siis tee järgmised sammud:
 
-1. Vali **Add Ingestion** → **Add Metadata Ingestion**
-2. Jäta vaikeseadistused (kõik skeemad, kõik tabelid)
-3. Klõpsa **Submit**
-
-Pipeline käivitub automaatselt. Oodatav kestus: 30–60 sekundit.
+> Pärast teenuse salvestamist suunatakse sind ingestion seadistuse (Agents) lehele.
+> 
+> 1. Vali **Add Agent** → **Add Metadata Agent**
+> 2. Jäta vaikeseadistused (kõik skeemad, kõik tabelid)
+> 3. Klõpsa **Submit**
+> 
+> Pipeline käivitub automaatselt. Oodatav kestus: 30–60 sekundit.
 
 4. Kontrolli tulemust: mine **Explore** → **Tables**
 

@@ -143,7 +143,7 @@ def load_users(conn):
     rows = 0
 
     try:
-        logger.info("Paerim kasutajaid: %s", USERS_API_URL)
+        logger.info("Pärin kasutajaid: %s", USERS_API_URL)
         resp = requests.get(USERS_API_URL, timeout=30)
         resp.raise_for_status()
         data = resp.json()
@@ -171,7 +171,7 @@ def load_users(conn):
 
     except Exception as e:
         conn.rollback()
-        logger.error("Kasutajate laadimine ebaonnestus: %s", e)
+        logger.error("Kasutajate laadimine ebaõnnestus: %s", e)
         log_finish(conn, log_id, rows, status="error", error_msg=str(e))
         raise
 
@@ -198,7 +198,7 @@ def load_posts(conn, batch=None):
     rows = 0
 
     try:
-        logger.info("Paerim postitusi: %s", POSTS_API_URL)
+        logger.info("Pärin postitusi: %s", POSTS_API_URL)
         resp = requests.get(POSTS_API_URL, timeout=30)
         resp.raise_for_status()
         posts = resp.json()
@@ -223,7 +223,7 @@ def load_posts(conn, batch=None):
 
     except Exception as e:
         conn.rollback()
-        logger.error("Postituste laadimine ebaonnestus: %s", e)
+        logger.error("Postituste laadimine ebaõnnestus: %s", e)
         log_finish(conn, log_id, rows, status="error", error_msg=str(e))
         raise
 

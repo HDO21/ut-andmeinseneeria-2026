@@ -15,7 +15,7 @@
   date_trunc('month', {{ col }})::date
 {% endmacro %}
 
--- Ümarab täisarvu lähima 1000-ni alla: 12345 -> 12000
+-- Ümardab täisarvu lähima 1000-ni alla: 12345 -> 12000
 {% macro mask_int(col) %}
   (floor({{ col }}::numeric / 1000) * 1000)::int
 {% endmacro %}
