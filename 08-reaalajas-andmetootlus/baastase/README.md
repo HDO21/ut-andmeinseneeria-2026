@@ -213,9 +213,7 @@ See ei ole ainus võimalik näide, kuid see on hea õppenäide, sest:
 
 `Celery` on Pythoni maailmas levinud taustatööde tööriist. `Redis` on sageli kasutatav maakler, kuhu Celery paneb tööülesanded ootele.
 
-Selles praktikumis hoiab Redis järjekorda mälus. `compose.yml` käivitab Redise ilma püsiva salvestuseta. See tähendab, et Redise järjekord sobib siin ajutiste tööülesannete hoidmiseks, mitte sündmuste ajaloo talletamiseks. Sündmuste nähtav ja kontrollitav ajalugu on PostgreSQL-i tabelis `stream.event_log`.
-
-See muster on tööelus tavaline.
+Selline taustatööde muster on tööelus tavaline.
 
 Näited:
 
@@ -230,7 +228,11 @@ Celery + Redis on siin järjekorrapõhine lahendus. See ei ole Apache Kafka asen
 
 Apache Kafka on logipõhine voogedastusplatvorm. Kafka puhul jäävad sõnumid logisse alles ja tarbijad loevad neid oma nihke ehk offseti järgi. Seda katab edasijõudnute praktikum.
 
-Selles õppekeskkonnas hoiame sündmused PostgreSQL-i tabelis `stream.event_log`. Nii näed `SQL`-iga:
+Selles praktikumis hoiab Redis järjekorda mälus. `compose.yml` käivitab Redise ilma püsiva salvestuseta. See tähendab, et Redise järjekord sobib ajutiste tööülesannete hoidmiseks, mitte sündmuste ajaloo talletamiseks. Sündmuste nähtav ja kontrollitav ajalugu on PostgreSQL-i tabelis `stream.event_log`.
+
+Kui `redis` konteiner ei tööta, ei saa publisher Celery tööülesannet järjekorda saata. Praeguses näites võib sündmus olla juba tabelisse `stream.event_log` kirjutatud, kuid selle olek jääb `published` ja rida ei ilmu tabelisse `stream.task_dispatch_log`. See ei ole selles praktikumis eraldi katsetatav harjutus, vaid töökindluse tähelepanek: järjekorrapõhises töövoos on maakler eraldi sõltuvus, mille tõrkega peab päris süsteemis arvestama.
+
+PostgreSQL-i sündmuste logi aitab seda töövoogu nähtavaks teha. Nii näed `SQL`-iga:
 
 - mis sündmus loodi;
 - millal see järjekorda saadeti;
@@ -718,6 +720,7 @@ Selle praktikumi mõte on anda neile teemadele alus ilma, et peaks kohe Kafkat j
 | `docker compose` ei leia faili | Oled vales kaustas | Käivita `pwd` ja liigu kausta `08-reaalajas-andmetootlus/baastase` |
 | `port is already allocated` | Port `5438` on kasutusel | Muuda `.env` failis `DB_PORT_HOST` väärtust või peata teine teenus |
 | `worker` ei töötle sündmuseid | Worker on peatatud või käivitub alles | Kontrolli `docker compose ps` ja `docker compose logs worker --tail 40` |
+| `publish` käsk katkeb Redise ühenduse veaga | `redis` konteiner ei tööta või pole veel valmis | Kontrolli `docker compose ps`, käivita vajadusel `docker compose start redis` ja proovi avaldamist uuesti |
 | Redise järjekord ei tühjene | Worker ei saa Redise või andmebaasiga ühendust | Vaata `docker compose logs worker` ja kontrolli `.env` väärtuseid |
 | `relation does not exist` | Andmebaasi init-skript ei jooksnud või kasutad vana mahtu | Käivita `docker compose down -v` ja seejärel `docker compose up -d --build` |
 | Live-koond ja pakktöötlus erinevad | Kõik tööülesanded pole veel töödeldud | Oota mõni sekund ja käivita kontroll uuesti |
