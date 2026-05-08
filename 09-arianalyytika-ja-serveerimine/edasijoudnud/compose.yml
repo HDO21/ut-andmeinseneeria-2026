@@ -86,7 +86,7 @@ services:
           --limit-request-line 0 --limit-request-field_size 0
           'superset.app:create_app()'"
 
-  # Pythoni konteiner andmete laadimiseks (CSV → andmebaas)
+  # Pythoni konteiner andmete laadimiseks (CSV → andmebaas) ja REST API serveerimiseks
   python:
     build:
       context: .
@@ -100,6 +100,7 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
+      API_KEY: ${API_KEY}
     depends_on:
       db:
         condition: service_healthy
@@ -107,6 +108,8 @@ services:
       - ./scripts:/scripts
       - ./data:/data
     working_dir: /scripts
+    ports:
+      - "8000:8000"
     tty: true
 
   # dbt konteiner mudelite käivitamiseks
