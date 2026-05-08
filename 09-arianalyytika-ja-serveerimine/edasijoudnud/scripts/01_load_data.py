@@ -1,11 +1,11 @@
 """
-Andmete laadimine CSV failidest PostgreSQL raw skeemasse (01_load_data.py)
+Andmete laadimine CSV-failidest PostgreSQL raw-skeemasse (01_load_data.py)
 
-Loeb /data kaustast supermarketi CSV failid ja laeb need andmebaasi raw skeemasse.
+Loeb /data kaustast supermarketi CSV-failid ja laeb need andmebaasi raw-skeemasse.
 
 Kasutamine:
-  python 01_load_data.py          # laadi koik tabelid
-  python 01_load_data.py --tabel fact_sales   # laadi uks tabel
+  python 01_load_data.py                      # laadi kõik tabelid
+  python 01_load_data.py --tabel fact_sales   # laadi üks tabel
 """
 
 import argparse

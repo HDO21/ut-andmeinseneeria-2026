@@ -1,4 +1,4 @@
--- Muuk piirkonna ja kuu loikes
+-- Müük piirkonna ja kuu lõikes
 select
     d.month_start,
     d.year,

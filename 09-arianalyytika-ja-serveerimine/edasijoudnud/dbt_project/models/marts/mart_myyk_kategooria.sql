@@ -1,4 +1,4 @@
--- Muuk tootekategooria ja kuu loikes
+-- Müük tootekategooria ja kuu lõikes
 select
     d.month_start,
     d.year,

@@ -1,4 +1,4 @@
--- Igakuine muuk: kogutulu, tehingute arv, keskmine ostu suurus
+-- Igakuine müük: kogutulu, tehingute arv, keskmine ostu suurus
 select
     d.month_start,
     d.year,

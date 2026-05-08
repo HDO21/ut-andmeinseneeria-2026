@@ -2,7 +2,7 @@ x-superset-image: &superset-image apache/superset:6.0.0
 
 services:
 
-  # Analuutika andmebaas (pgduckdb)
+  # Analüütika andmebaas (pgduckdb)
   db:
     image: pgduckdb/pgduckdb:18-v1.1.1
     container_name: praktikum-db-09
@@ -19,7 +19,7 @@ services:
       interval: 5s
       retries: 10
 
-  # Superseti metaandmete baas (eraldi postgres)
+  # Superseti metaandmete baas (eraldi PostgreSQL konteiner)
   superset-db:
     image: postgres:16
     container_name: praktikum-supersetdb-09
@@ -34,7 +34,7 @@ services:
       interval: 5s
       retries: 10
 
-  # Initsialiseerimine: migratsioonid + admin kasutaja + rollid (joob uks kord)
+  # Initsialiseerimine: migratsioonid + admini kasutaja + rollid (jookseb üks kord läbi)
   superset-init:
     image: *superset-image
     container_name: praktikum-supersetinit-09
@@ -86,7 +86,7 @@ services:
           --limit-request-line 0 --limit-request-field_size 0
           'superset.app:create_app()'"
 
-  # Pythoni konteiner andmete laadimiseks
+  # Pythoni konteiner andmete laadimiseks (CSV → andmebaas)
   python:
     build:
       context: .
@@ -109,7 +109,7 @@ services:
     working_dir: /scripts
     tty: true
 
-  # dbt konteiner mudelite joostamiseks
+  # dbt konteiner mudelite käivitamiseks
   dbt:
     build:
       context: .
