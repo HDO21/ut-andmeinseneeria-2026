@@ -4,15 +4,18 @@ See fail on näidis projektitöö teise nädala väljundiks. Enda projektis uuen
 
 ## Mis on valmis
 
-- Docker Compose käivitab PostgreSQL-i, töövoo konteineri ja näidikulaua.
-- Open-Meteo API-st saab kätte Tartu ja Tallinna tunnipõhise prognoosi.
+- Docker Compose käivitab PostgreSQL-i, töövoo konteineri, scheduleri ja näidikulaua.
+- Open-Meteo API-st saab kätte valitud Eesti asulate tunnipõhise prognoosi.
+- Asukohad on eraldi staatilises `mart.dim_location` dimensioonitabelis.
 - Andmed liiguvad `staging` kihist `mart` kihti.
-- Näidikulaud näitab temperatuuri, sademeid, tuult ja kvaliteediteste.
+- `mart` kihis arvutatakse tunnipõhine sobivuse skoor ja 3-tunnised ajaaknad.
+- Näidikulaud näitab parimaid ajaaknaid, sobivuse kalendrit, temperatuuri, sademeid, tuult ja kvaliteediteste.
+- Scheduler käivitab töövoo vaikimisi iga tunni alguses ning näidikulaud värskendab brauserivaadet automaatselt.
 
 ## Järgmised sammud
 
-- Kontrollida, kas valitud mõõdikud vastavad äriküsimusele piisavalt hästi.
-- Lisada vajadusel kolmas asukoht või teine ilmamuutuja.
+- Kontrollida, kas skoori kaalud vastavad äriküsimusele piisavalt hästi.
+- Lisada vajadusel teine ilmamuutuja või muuta asukohadimensiooni ridu.
 - Täpsustada README järelduste ja piirangute osa.
 
 ## Mis takistab

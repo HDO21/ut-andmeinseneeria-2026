@@ -40,6 +40,29 @@ services:
     working_dir: /app
     tty: true
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: project-template-weather-scheduler
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      PIPELINE_CRON: "${PIPELINE_CRON:-0 * * * *}"
+      RUN_ON_STARTUP: ${RUN_ON_STARTUP:-true}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/app/scripts
+    working_dir: /app
+    command: ["bash", "scripts/start_cron.sh"]
+
   dashboard:
     build:
       context: .
@@ -53,6 +76,7 @@ services:
       DB_USER: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: ${POSTGRES_DB}
+      DASHBOARD_AUTOREFRESH_SECONDS: ${DASHBOARD_AUTOREFRESH_SECONDS:-15}
     depends_on:
       db:
         condition: service_healthy

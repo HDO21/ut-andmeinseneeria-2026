@@ -1,8 +1,9 @@
 """Näidisprojekti andmetöövoog.
 
-Skript loeb Open-Meteo API-st Tartu ja Tallinna tunnipõhise ilmaennustuse,
-salvestab selle `staging` kihti, ehitab `mart` kihis päevased koondid
-ning käivitab kvaliteedikontrollid.
+Skript loeb aktiivsed asukohad staatilisest dimensioonitabelist, pärib
+Open-Meteo API-st tunnipõhise ilmaennustuse, salvestab selle `staging`
+kihti, ehitab `mart` kihis otsustamiseks sobivad tabelid ning käivitab
+kvaliteedikontrollid.
 """
 
 from __future__ import annotations
@@ -19,23 +20,9 @@ import requests
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+DIMENSIONS_SQL = SCRIPT_DIR / "00_seed_dimensions.sql"
 TRANSFORM_SQL = SCRIPT_DIR / "01_transform.sql"
 QUALITY_SQL = SCRIPT_DIR / "02_quality_tests.sql"
-
-LOCATIONS = [
-    {
-        "location_id": "tartu",
-        "location_name": "Tartu",
-        "latitude": 58.3776,
-        "longitude": 26.7290,
-    },
-    {
-        "location_id": "tallinn",
-        "location_name": "Tallinn",
-        "latitude": 59.4370,
-        "longitude": 24.7536,
-    },
-]
 
 
 class UserFacingError(RuntimeError):
@@ -71,6 +58,40 @@ def get_forecast_days() -> int:
         raise UserFacingError("FORECAST_DAYS peab jääma vahemikku 1 kuni 16.")
 
     return days
+
+
+def seed_dimensions(conn) -> None:
+    execute_sql_file(conn, DIMENSIONS_SQL)
+
+
+def load_active_locations(conn) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT
+                location_id,
+                location_name,
+                latitude,
+                longitude
+            FROM mart.dim_location
+            WHERE is_active
+            ORDER BY display_order, location_name
+            """
+        )
+        rows = cur.fetchall()
+
+    if not rows:
+        raise UserFacingError("Asukohtade dimensioonis ei ole ühtegi aktiivset rida.")
+
+    return [
+        {
+            "location_id": location_id,
+            "location_name": location_name,
+            "latitude": float(latitude),
+            "longitude": float(longitude),
+        }
+        for location_id, location_name, latitude, longitude in rows
+    ]
 
 
 def insert_pipeline_run(conn, *, run_id: uuid.UUID, fetched_at: datetime, forecast_days: int) -> None:
@@ -118,7 +139,7 @@ def fetch_forecast(location: dict, *, forecast_days: int) -> tuple[str, dict]:
     params = {
         "latitude": location["latitude"],
         "longitude": location["longitude"],
-        "hourly": "temperature_2m,precipitation,wind_speed_10m",
+        "hourly": "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,is_day",
         "timezone": "Europe/Tallinn",
         "wind_speed_unit": "ms",
         "forecast_days": forecast_days,
@@ -145,7 +166,14 @@ def validate_hourly_payload(payload: dict, *, location_name: str) -> dict:
     if not isinstance(hourly, dict):
         raise UserFacingError(f"Asukoha {location_name} vastuses puudub `hourly` plokk.")
 
-    required_keys = ["time", "temperature_2m", "precipitation", "wind_speed_10m"]
+    required_keys = [
+        "time",
+        "temperature_2m",
+        "precipitation",
+        "precipitation_probability",
+        "wind_speed_10m",
+        "is_day",
+    ]
     missing = [key for key in required_keys if key not in hourly]
     if missing:
         joined = ", ".join(missing)
@@ -186,15 +214,19 @@ def load_location_rows(
                     forecast_time,
                     temperature_c,
                     precipitation_mm,
+                    precipitation_probability_pct,
                     wind_speed_ms,
+                    is_day,
                     fetched_at,
                     source_url
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (run_id, location_id, forecast_time) DO UPDATE SET
                     temperature_c = EXCLUDED.temperature_c,
                     precipitation_mm = EXCLUDED.precipitation_mm,
+                    precipitation_probability_pct = EXCLUDED.precipitation_probability_pct,
                     wind_speed_ms = EXCLUDED.wind_speed_ms,
+                    is_day = EXCLUDED.is_day,
                     fetched_at = EXCLUDED.fetched_at,
                     source_url = EXCLUDED.source_url
                 """,
@@ -207,7 +239,9 @@ def load_location_rows(
                     forecast_time,
                     hourly["temperature_2m"][index],
                     hourly["precipitation"][index],
+                    hourly["precipitation_probability"][index],
                     hourly["wind_speed_10m"][index],
+                    hourly["is_day"][index],
                     fetched_at,
                     source_url,
                 ),
@@ -225,6 +259,8 @@ def ingest() -> uuid.UUID:
 
     conn = get_connection()
     try:
+        seed_dimensions(conn)
+        locations = load_active_locations(conn)
         insert_pipeline_run(
             conn,
             run_id=run_id,
@@ -233,7 +269,7 @@ def ingest() -> uuid.UUID:
         )
 
         total_rows = 0
-        for location in LOCATIONS:
+        for location in locations:
             log(f"Pärin ilmaandmeid: {location['location_name']}.")
             source_url, payload = fetch_forecast(location, forecast_days=forecast_days)
             hourly = validate_hourly_payload(payload, location_name=location["location_name"])
@@ -252,7 +288,7 @@ def ingest() -> uuid.UUID:
             conn,
             run_id=run_id,
             status="success",
-            message=f"Laadimine õnnestus. Ridu kokku: {total_rows}.",
+            message=f"Laadimine õnnestus. Asukohti: {len(locations)}. Ridu kokku: {total_rows}.",
         )
         log(f"Andmete vastuvõtt valmis. Käivituse ID: {run_id}.")
         return run_id
@@ -281,11 +317,14 @@ def fetch_value(conn, query: str):
 def transform() -> None:
     conn = get_connection()
     try:
+        seed_dimensions(conn)
         execute_sql_file(conn, TRANSFORM_SQL)
         daily_rows = fetch_value(conn, "SELECT COUNT(*) FROM mart.daily_weather_summary;")
         latest_rows = fetch_value(conn, "SELECT COUNT(*) FROM mart.latest_daily_weather_summary;")
+        window_rows = fetch_value(conn, "SELECT COUNT(*) FROM mart.latest_outdoor_activity_windows;")
         log(f"Transformatsioon valmis. Päevaseid koondridu kokku: {daily_rows}.")
-        log(f"Viimase laadimise näidikulaua ridu: {latest_rows}.")
+        log(f"Viimase laadimise päevaseid koondridu: {latest_rows}.")
+        log(f"Viimase laadimise 3-tunniseid ajaaknaid: {window_rows}.")
     finally:
         conn.close()
 
@@ -352,18 +391,37 @@ def check_results() -> None:
         )
         print_query(
             conn,
-            "Viimase laadimise päevased koondid",
+            "Aktiivsed asukohad dimensioonis",
+            """
+            SELECT
+                location_id,
+                location_name,
+                county,
+                latitude,
+                longitude
+            FROM mart.dim_location
+            WHERE is_active
+            ORDER BY display_order, location_name
+            """,
+        )
+        print_query(
+            conn,
+            "Parimad 3-tunnised ajaaknad",
             """
             SELECT
                 location_name,
-                forecast_date,
-                avg_temp_c,
+                window_start,
+                window_end,
+                avg_combined_score,
+                avg_temperature_c,
                 total_precipitation_mm,
+                max_precipitation_probability_pct,
                 max_wind_speed_ms,
-                weather_risk_level
-            FROM mart.latest_daily_weather_summary
-            ORDER BY location_name, forecast_date
-            LIMIT 20
+                recommendation_label,
+                main_reason
+            FROM mart.latest_outdoor_activity_windows
+            ORDER BY avg_combined_score DESC, window_start
+            LIMIT 10
             """,
         )
         print_query(
@@ -391,14 +449,16 @@ def reset_data() -> None:
                 TRUNCATE TABLE
                     staging.weather_hourly_raw,
                     staging.pipeline_runs,
+                    mart.outdoor_activity_windows,
+                    mart.hourly_weather_score,
                     mart.daily_weather_summary,
                     mart.fact_weather_forecast,
-                    mart.dim_location,
                     quality.test_results
                 CASCADE
                 """
             )
         conn.commit()
+        seed_dimensions(conn)
         log("Andmetabelid on tühjendatud.")
     finally:
         conn.close()

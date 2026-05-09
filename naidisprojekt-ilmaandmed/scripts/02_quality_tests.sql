@@ -9,6 +9,38 @@ WITH latest_run AS (
 ),
 test_cases AS (
     SELECT
+        'dim_location_has_active_rows' AS test_name,
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM mart.dim_location
+                WHERE is_active
+            )
+                THEN 0
+            ELSE 1
+        END AS failed_rows,
+        'Asukohtade dimensioonis peab olema vähemalt üks aktiivne rida.' AS message
+
+    UNION ALL
+
+    SELECT
+        'active_locations_have_coordinates' AS test_name,
+        COUNT(*)::integer AS failed_rows,
+        'Aktiivsetel asukohtadel peavad olema koordinaadid.' AS message
+    FROM mart.dim_location
+    WHERE is_active
+      AND (
+          latitude IS NULL
+          OR longitude IS NULL
+          OR latitude < 57
+          OR latitude > 60
+          OR longitude < 21
+          OR longitude > 29
+      )
+
+    UNION ALL
+
+    SELECT
         'weather_raw_has_rows' AS test_name,
         CASE
             WHEN EXISTS (
@@ -24,12 +56,17 @@ test_cases AS (
     UNION ALL
 
     SELECT
-        'latest_run_has_expected_locations' AS test_name,
-        GREATEST(2 - COUNT(DISTINCT w.location_id), 0)::integer AS failed_rows,
-        'Viimasel edukal laadimisel peavad olema nii Tartu kui Tallinn.' AS message
-    FROM latest_run AS r
+        'latest_run_has_active_locations' AS test_name,
+        COUNT(*)::integer AS failed_rows,
+        'Viimasel edukal laadimisel peavad olema kõik aktiivsed asukohad dimensioonitabelist.' AS message
+    FROM mart.dim_location AS l
+    LEFT JOIN latest_run AS r
+        ON TRUE
     LEFT JOIN staging.weather_hourly_raw AS w
         ON r.run_id = w.run_id
+       AND l.location_id = w.location_id
+    WHERE l.is_active
+      AND w.location_id IS NULL
 
     UNION ALL
 
@@ -88,6 +125,18 @@ test_cases AS (
     UNION ALL
 
     SELECT
+        'precipitation_probability_range' AS test_name,
+        COUNT(*)::integer AS failed_rows,
+        'Sademete tõenäosus peab jääma vahemikku 0 kuni 100 protsenti.' AS message
+    FROM staging.weather_hourly_raw AS w
+    INNER JOIN latest_run AS r ON w.run_id = r.run_id
+    WHERE w.precipitation_probability_pct IS NULL
+       OR w.precipitation_probability_pct < 0
+       OR w.precipitation_probability_pct > 100
+
+    UNION ALL
+
+    SELECT
         'wind_speed_reasonable' AS test_name,
         COUNT(*)::integer AS failed_rows,
         'Tuulekiirus peab jääma vahemikku 0 kuni 60 m/s.' AS message
@@ -96,6 +145,28 @@ test_cases AS (
     WHERE w.wind_speed_ms IS NULL
        OR w.wind_speed_ms < 0
        OR w.wind_speed_ms > 60
+
+    UNION ALL
+
+    SELECT
+        'is_day_valid' AS test_name,
+        COUNT(*)::integer AS failed_rows,
+        'Päevavalguse tunnus peab olema 0 või 1.' AS message
+    FROM staging.weather_hourly_raw AS w
+    INNER JOIN latest_run AS r ON w.run_id = r.run_id
+    WHERE w.is_day IS NULL
+       OR w.is_day NOT IN (0, 1)
+
+    UNION ALL
+
+    SELECT
+        'combined_score_range' AS test_name,
+        COUNT(*)::integer AS failed_rows,
+        'Kombineeritud sobivuse skoor peab jääma vahemikku 0 kuni 100.' AS message
+    FROM mart.hourly_weather_score AS h
+    INNER JOIN latest_run AS r ON h.run_id = r.run_id
+    WHERE h.combined_score < 0
+       OR h.combined_score > 100
 
     UNION ALL
 
@@ -110,6 +181,20 @@ test_cases AS (
             ELSE 1
         END AS failed_rows,
         'Päevane koondtabel peab sisaldama näidikulaua ridu.' AS message
+
+    UNION ALL
+
+    SELECT
+        'mart_outdoor_windows_has_rows' AS test_name,
+        CASE
+            WHEN EXISTS (
+                SELECT 1
+                FROM mart.latest_outdoor_activity_windows
+            )
+                THEN 0
+            ELSE 1
+        END AS failed_rows,
+        'Ajaakende tabel peab sisaldama välitegevuste soovitusi.' AS message
 )
 INSERT INTO quality.test_results (
     test_name,
