@@ -29,22 +29,22 @@ Andmeid tarbitakse kolmel erineval viisil sõltuvalt tarbija rollist:
 
 | Viis | Kirjeldus | Plussid | Miinused | Sobib |
 |------|-----------|---------|----------|-------|
-| **SQL-juurdepääs** | Otse andmebaasi vastu SQL-päringuid | Paindlik; ligipääs tooresandmele | Nõuab SQL-oskust; halvad päringud aeglustavad DB-d | Analüütikud, andmeinsenerid |
+| **SQL-juurdepääs** | Otse andmebaasi vastu SQL-päringuid | Paindlik; ligipääs toorandmetele | Nõuab SQL-oskust; halvad päringud aeglustavad DB-d | Analüütikud, andmeinsenerid |
 | **BI / näidikulaud** | Visuaalvahendid (Superset, Power BI, Tableau) | Kasutajasõbralik; ühtlustatud mõõdikud | Näidikulaudade paljunemine; jäik uute küsimuste jaoks | Ärikasutajad, juhtkond |
-| **Failieksport** | Perioodiline CSV/Excel/Parquet eksport | Universaalne; jagamine lihtne | Aegunud andmed; versioonikäos (`final_v2_revised.csv`) | Välispartnerid, ühekordsed raportid |
-| **API pull** | Välissüsteemid pärivad andmeid REST API kaudu | Abstraheerib DB-d; täpsem juurdepääsukontroll | Arendustöö mahukas; struktuur on jäik | Rakendused, ML-teenused, partnerid |
+| **Failieksport** | Perioodiline CSV/Excel/Parquet eksport | Universaalne; jagamine lihtne | Aegunud andmed; versioonikaos (`final_v2_revised.csv`) | Välispartnerid, ühekordsed raportid |
+| **API pull** | Välissüsteemid pärivad andmeid REST API kaudu | Abstraheerib DB-d; täpsem juurdepääsukontroll | Arendusmahukas; struktuur on jäik | Rakendused, ML-teenused, partnerid |
 | **API push (Reverse ETL)** | Konveier saadab andmeid välissüsteemide API-desse | Andmed jõuavad kasutatavatesse tööriistadesse; automatiseeritud | Sõltub välissüsteemist; keeruline siluda | SaaS-tööriistad (CRM, turundustööriistad) |
 | **Sündmuste voog** | Reaalajas sündmuste edastus | Väga madal latentsus | Keerukas infrastruktuur | Reaalajarakendused (vt praktikum 8) |
 
 > **Tähelepanekuid:**
-> - SQL-juurdepääsu jõudlusriski leevendamiseks kasutatakse toodangus tihti **lugemisreplikat** (_read replica_), eraldi andmebaasi koopiat, mis võtab analüütikute päringukoormuse põhiandmebaasilt. See on aga pigem **ajutine lahendus enne pühendatud analüütika andmeplatvormi** (andmeladu, andmejärv) olemasolu. Kui analüütika andmebaas on OLTP-süsteemist eraldatud (nagu selles praktikumis), pole lugemisreplika vajalik, sest päringukoormuse eraldamine on lahendatud arhitektuuri tasemel.
+> - SQL-juurdepääsu jõudlusriski leevendamiseks kasutatakse toodangus tihti **lugemisreplikat** (_read replica_), eraldi andmebaasi koopiat, mis võtab analüütikute päringukoormuse põhiandmebaasilt. See on aga pigem **ajutine lahendus enne spetsiaalse analüütika andmeplatvormi** (andmeladu, andmejärv) olemasolu. Kui analüütika andmebaas on OLTP-süsteemist eraldatud (nagu selles praktikumis), pole lugemisreplika vajalik, sest päringukoormuse eraldamine on lahendatud arhitektuuri tasemel.
 > - „API pull on arendusmahukas" kehtib täielike toodangulahenduste kohta. Tänapäeval teeb FastAPI lihtsa sisemise API loomise oluliselt kiiremaks.
 > - **Feature store** (nt Feast) on ML-maailmas omaette kategooria, mida tabelis eraldi ei kajastata, kuid mis on sisuliselt spetsialiseeritud API pull ML-tunnuste jaoks.
 
 ### Mida arvestada serveerimisel?
 
-1. **Värskeoleku ja kiiruse tasakaal**: vaade on alati värske, kuid aeglasem; tabel on kiire, kuid aegunud; materiaalne vaade (_materialized view_) on kompromiss. dbt `marts` kasutab tabeleid, mis tagab kiired Superseti päringud.
-2. **Kasutatavus ja liides**: ise teenindus (_self-service_) vs kureeritud juurdepääs. Semantikakiht (mõõdikud andmekogumi tasandil) aitab tagada ühtlustatud mõõdikuid kogu organisatsioonis.
+1. **Värskuse ja kiiruse tasakaal**: vaade on alati värske, kuid aeglasem; tabel on kiire, kuid aegunud; materiaalne vaade (_materialized view_) on kompromiss. dbt `marts` kasutab tabeleid, mis tagab kiired Superseti päringud.
+2. **Kasutatavus ja liides**: iseteenindus (_self-service_) vs kureeritud juurdepääs. Semantikakiht (mõõdikud andmekogumi tasandil) aitab tagada ühtlustatud mõõdikuid kogu organisatsioonis.
 3. **Turvalisus ja privaatsus**: kes näeb mida? Seotud praktikumiga 7 (RLS, maskimine). Serveerimisel tuleb otsustada, kas anda BI-tööriistale andmebaasi otseühendus ja kas API nõuab autentimist.
 4. **Jälgitavus ja haldus**: kas andmed on värsked? Kellele andmestik kuulub? Kes vastutab, kui miski muutub? Seotud praktikumiga 6 (andmekvaliteet, OpenMetadata).
 
@@ -213,7 +213,7 @@ LIMIT 5;
 
 ## Ülesanne 4: Andmekogumite registreerimine
 
-Mine **Datasets → + Dataset** ja registreeri :
+Mine **Datasets → + Dataset** ja registreeri:
 
 | Skeem | Tabel |
 |---|---|
@@ -340,7 +340,7 @@ Toodangulahendus nõuab täiendavaid kihte.
 
 **API turvalisus toodangus:**
 - **OAuth 2.0 / JWT**: tööstusstandard. Lühiajalised tokenid, kasutaja identiteet ja ulatuspõhine (_scope_) juurdepääsukontroll. Kasutaja saab tokeni autentimisserverist, mitte otse API-lt.
-- **API lüüs** (_API Gateway_, nt Kong, AWS API Gateway, nginx): lisab kiirusepiirangu (_rate limiting_), logimise ja ühtse sisenemispunkti kõigile teenustele.
+- **API lüüs** (_API Gateway_, nt Kong, AWS API Gateway, nginx): lisab päringusageduse piirangu (_rate limiting_), logimise ja ühtse sisenemispunkti kõigile teenustele.
 - **mTLS** (_mutual TLS_): teenuste omavaheliseks suhtluseks. Mõlemad osapooled tõestavad oma identiteedi sertifikaadiga.
 - API ei tohiks toodangus kunagi töötada ilma TLS-ita (HTTPS).
 
