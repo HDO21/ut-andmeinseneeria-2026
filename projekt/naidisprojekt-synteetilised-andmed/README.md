@@ -32,7 +32,7 @@ Millistes kauplustes ja mis kellaaegadel on müügitõhusus (käive külastaja k
 | Orkestreerimine | Apache Airflow 3.x | Ajakavastab genereerimise ja dbt käivitamise |
 | Transformatsioon | dbt Core 1.10 | Puhastab, arvutab tõhususe, koondab |
 | Andmehoidla | PostgreSQL (pgDuckDB) | staging + intermediate + marts kihid |
-| Näidikulaud | Apache Superset 4.x | 3 interaktiivset chart'i |
+| Näidikulaud | Apache Superset 6.x | 3 interaktiivset chart'i |
 
 ## Projekti struktuur
 
@@ -71,18 +71,22 @@ Millistes kauplustes ja mis kellaaegadel on müügitõhusus (käive külastaja k
 # 1. Kopeeri keskkonnamuutujad
 cp .env.example .env
 
-# 2. Käivita kõik teenused
+# 2. Genereeri turvaline SECRET_KEY Superseti jaoks
+#    Asenda .env failis SUPERSET_SECRET_KEY väärtus:
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# 3. Käivita kõik teenused
 docker compose up -d --build
 
-# 3. Oota ~2–3 minutit
+# 4. Oota ~2–3 minutit
 docker compose ps   # kõik peaksid olema "running"
 
-# 4. Käivita Airflow UI-s DAG käsitsi esimesel korral
+# 5. Käivita Airflow UI-s DAG käsitsi esimesel korral
 #    http://localhost:8080  (kasutaja: airflow / parool: airflow)
 #    → myyk_pipeline → "Trigger DAG"
 #    DAG genereerib 90 päeva sünteetilised andmed ja käivitab dbt.
 
-# 5. Superset: http://localhost:8088 (kasutaja: admin / parool: admin)
+# 6. Superset: http://localhost:8088 (kasutaja: vt .env SUPERSET_ADMIN_USER/PASSWORD)
 #    Loo ühendus: Settings > Database Connections > + Database
 #    URI: postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
 ```
@@ -107,15 +111,82 @@ docker compose ps   # kõik peaksid olema "running"
 Generaator kasutab fikseeritud juhusliku generaatori seemet (`seed=42`), mis tagab
 reprodutseeritavuse — sama seeme annab alati sama andmestiku.
 
-## Superset dashboard
+## Superset seadistus
+
+Kui `docker compose up` on käivitunud ja DAG vähemalt korra edukalt läbi jooksnud, järgi neid samme:
+
+### 1. Loo andmebaasi ühendus
+
+Ava **http://localhost:8088** → logi sisse (vt `.env` `SUPERSET_ADMIN_USER/PASSWORD`).
+
+**Settings → Database Connections → + Database → PostgreSQL**
+
+| Väli | Väärtus |
+|------|---------|
+| HOST | `analytics-db` |
+| PORT | `5432` |
+| DATABASE NAME | `praktikum` |
+| USERNAME | `praktikum` |
+| PASSWORD | `praktikum` |
+
+Või lisa SQLAlchemy URI otse:
+```
+postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
+```
+
+### 2. Registreeri datasetid
+
+**Datasets → + Dataset** — vali loodud ühendus ja registreeri kaks tabelit:
+
+- `marts` → `mart_pood_paevane`
+- `marts` → `mart_parimad_tunnid`
+
+### 3. Loo chart'id
 
 Dashboard koosneb 3 chart'ist:
 
-| Chart | Tüüp | Andmed |
-|-------|------|--------|
-| Kaupluste paremusjärjestus | Bar chart | `mart_pood_paevane` — kesk_tohusus |
-| Kellaajamustrid | Line chart | `mart_parimad_tunnid` — kesk_tohusus tunni lõikes |
-| KPI paarik | Big Number | `mart_pood_paevane` — max tõhusus + kogukäive |
+| Chart | Tüüp | Dataset | Mõõdik / veerg |
+|-------|------|---------|----------------|
+| Kaupluste paremusjärjestus | Bar chart | `mart_pood_paevane` | X: `pood_nimi`, Y: `kesk_tohusus` (Average) |
+| Kellaajamustrid | Line chart | `mart_parimad_tunnid` | X: `mootmise_tund`, Y: `kesk_tohusus` (Average), Series: `pood_nimi` |
+| KPI — kõrgeim tõhusus | Big Number | `mart_pood_paevane` | Mõõdik: `max_tohusus` (MAX) |
+
+**Charts → + Chart** → vali dataset ja chart tüüp → seadista → Save.
+
+### 4. Loo dashboard
+
+**Dashboards → + Dashboard** → anna nimi (nt "EstiMüük OÜ — müügitõhusus") → lohista chart'id paika → Publish.
+
+### 5. Ekspordi dashboard (ZIP reposse)
+
+```bash
+# Ekspordi loodud dashboard ZIP-failina
+docker compose exec superset superset export-dashboards \
+  -f /app/dashboards/myyk_dashboard.zip
+
+# Kopeeri ZIP hosti failisüsteemi
+docker compose cp superset:/app/dashboards/myyk_dashboard.zip \
+  superset/dashboards/myyk_dashboard.zip
+
+# Nüüd saab ZIP-i reposse commitida
+git add superset/dashboards/myyk_dashboard.zip
+```
+
+### 6. Impordi dashboard (kui ZIP on juba reposis)
+
+```bash
+bash scripts/import_dashboard.sh
+```
+
+Või käsitsi:
+```bash
+docker compose cp superset/dashboards/myyk_dashboard.zip \
+  superset:/app/dashboards/myyk_dashboard.zip
+
+docker compose exec superset superset import-dashboards \
+  --path /app/dashboards/myyk_dashboard.zip \
+  --username admin
+```
 
 ## Mida see näide NÄITAB
 

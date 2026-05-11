@@ -21,7 +21,7 @@ Millistes Eesti asulates ja millistel järgmistel päevadel on ilm kõige sobiva
 | Orkestreerimine | Apache Airflow 3.x | Ajakavastab andmete laadimise ja dbt käivitamise |
 | Transformatsioon | dbt Core 1.10 | Puhastab, skoorib ja koondab andmed |
 | Andmehoidla | PostgreSQL (pgDuckDB) | staging + intermediate + marts kihid |
-| Näidikulaud | Apache Superset 4.x | 3 interaktiivset chart'i |
+| Näidikulaud | Apache Superset 6.x | 3 interaktiivset chart'i |
 | Andmeallikas | Open-Meteo API | Avalik, tasuta, ilma võtmeta |
 
 ## Andmevoog
@@ -80,18 +80,22 @@ Superset dashboard
 # 1. Kopeeri keskkonnamuutujad
 cp .env.example .env
 
-# 2. Käivita kõik teenused
+# 2. Genereeri turvaline SECRET_KEY Superseti jaoks
+#    Asenda .env failis SUPERSET_SECRET_KEY väärtus:
+python -c "import secrets; print(secrets.token_hex(32))"
+
+# 3. Käivita kõik teenused
 docker compose up -d --build
 
-# 3. Oota ~2–3 minutit, kuni Superset initsialiseerub
+# 4. Oota ~2–3 minutit, kuni Superset initsialiseerub
 docker compose ps   # kõik peaksid olema "running" või "healthy"
 
-# 4. Ava Airflow UI ja käivita DAG käsitsi esimesel korral
+# 5. Ava Airflow UI ja käivita DAG käsitsi esimesel korral
 #    http://localhost:8080  (kasutaja: airflow / parool: airflow)
 #    → ilmaandmed_pipeline → "Trigger DAG" nupp
 
-# 5. Ava Superset ja loo ühendus andmebaasiga
-#    http://localhost:8088  (kasutaja: admin / parool: admin)
+# 6. Ava Superset ja loo ühendus andmebaasiga
+#    http://localhost:8088  (kasutaja: vt .env SUPERSET_ADMIN_USER/PASSWORD)
 #    Settings > Database Connections > + Database > PostgreSQL
 #    SQLAlchemy URI: postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
 ```
@@ -113,17 +117,82 @@ dbt test --profiles-dir .        # käivitab testid
 dbt docs generate --profiles-dir .  # genereerib dokumentatsiooni
 ```
 
-## Superset dashboard
+## Superset seadistus
+
+Kui `docker compose up` on käivitunud ja DAG vähemalt korra edukalt läbi jooksnud, järgi neid samme:
+
+### 1. Loo andmebaasi ühendus
+
+Ava **http://localhost:8088** → logi sisse (vt `.env` `SUPERSET_ADMIN_USER/PASSWORD`).
+
+**Settings → Database Connections → + Database → PostgreSQL**
+
+| Väli | Väärtus |
+|------|---------|
+| HOST | `analytics-db` |
+| PORT | `5432` |
+| DATABASE NAME | `praktikum` |
+| USERNAME | `praktikum` |
+| PASSWORD | `praktikum` |
+
+Või lisa SQLAlchemy URI otse:
+```
+postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
+```
+
+### 2. Registreeri datasetid
+
+**Datasets → + Dataset** — vali loodud ühendus ja registreeri kaks tabelit:
+
+- `marts` → `mart_paeva_kokkuvote`
+- `marts` → `mart_parimad_ajavahemikud`
+
+### 3. Loo chart'id
 
 Dashboard koosneb 3 chart'ist:
 
-| Chart | Tüüp | Andmed |
-|-------|------|--------|
-| Linnade paremusjärjestus | Bar chart | `mart_paeva_kokkuvote` — kesk_skoor täna |
-| Parimad ajaaknad | Table | `mart_parimad_ajavahemikud` — top 20 akent |
-| Päevane KPI | Big Number | `mart_paeva_kokkuvote` — kõrgeim max_skoor |
+| Chart | Tüüp | Dataset | Mõõdik / veerg |
+|-------|------|---------|----------------|
+| Linnade paremusjärjestus | Bar chart | `mart_paeva_kokkuvote` | X: `asukoha_nimi`, Y: `kesk_skoor` (Average) |
+| Parimad ajaaknad | Table | `mart_parimad_ajavahemikud` | Veerud: `asukoha_nimi`, `vahemiku_algus`, `kesk_skoor`, `soovitus` |
+| Päevane KPI | Big Number | `mart_paeva_kokkuvote` | Mõõdik: `max_skoor` (MAX) |
 
-Dashboard eksportimise ja importimise juhend: `scripts/import_dashboard.sh`
+**Charts → + Chart** → vali dataset ja chart tüüp → seadista → Save.
+
+### 4. Loo dashboard
+
+**Dashboards → + Dashboard** → anna nimi (nt "Ilmaandmed — välitegevuse sobivus") → lohista chart'id paika → Publish.
+
+### 5. Ekspordi dashboard (ZIP reposse)
+
+```bash
+# Ekspordi loodud dashboard ZIP-failina
+docker compose exec superset superset export-dashboards \
+  -f /app/dashboards/ilmaandmed_dashboard.zip
+
+# Kopeeri ZIP hosti failisüsteemi
+docker compose cp superset:/app/dashboards/ilmaandmed_dashboard.zip \
+  superset/dashboards/ilmaandmed_dashboard.zip
+
+# Nüüd saab ZIP-i reposse commitida
+git add superset/dashboards/ilmaandmed_dashboard.zip
+```
+
+### 6. Impordi dashboard (kui ZIP on juba reposis)
+
+```bash
+bash scripts/import_dashboard.sh
+```
+
+Või käsitsi:
+```bash
+docker compose cp superset/dashboards/ilmaandmed_dashboard.zip \
+  superset:/app/dashboards/ilmaandmed_dashboard.zip
+
+docker compose exec superset superset import-dashboards \
+  --path /app/dashboards/ilmaandmed_dashboard.zip \
+  --username admin
+```
 
 ## Arhitektuur ja täpsemad otsused
 

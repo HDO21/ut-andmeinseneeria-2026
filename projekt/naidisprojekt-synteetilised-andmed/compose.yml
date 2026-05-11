@@ -5,9 +5,10 @@
 #
 # Käivitamine:
 #   cp .env.example .env
+#   # Muuda .env failis SUPERSET_SECRET_KEY (genereeri: python -c "import secrets; print(secrets.token_hex(32))")
 #   docker compose up -d --build
 #   # Airflow: http://localhost:8080  (kasutaja: airflow / parool: airflow)
-#   # Superset: http://localhost:8088 (kasutaja: admin / parool: admin)
+#   # Superset: http://localhost:8088 (kasutaja: vt .env SUPERSET_ADMIN_USER)
 #   # Käivita Airflow UI-s DAG "myyk_pipeline" käsitsi esimesel korral.
 
 x-airflow-common:
@@ -129,57 +130,61 @@ services:
     image: postgres:16
     container_name: synteetilised-superset-db
     environment:
-      POSTGRES_USER: ${SUPERSET_DB_USER:-superset}
-      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:-superset}
-      POSTGRES_DB: ${SUPERSET_DB_NAME:-superset}
+      POSTGRES_USER: ${SUPERSET_DB_USER}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      POSTGRES_DB: ${SUPERSET_DB_NAME}
     volumes:
       - superset-db-volume:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${SUPERSET_DB_USER:-superset}"]
-      interval: 10s
-      retries: 5
-      start_period: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER} -d ${SUPERSET_DB_NAME}"]
+      interval: 5s
+      retries: 10
     restart: always
 
-  superset:
-    image: apache/superset:4.1.1
-    container_name: synteetilised-superset
-    environment:
-      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-supersetsecretkey123}
-      SUPERSET_DB_USER: ${SUPERSET_DB_USER:-superset}
-      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:-superset}
-      SUPERSET_DB_HOST: superset-db
-      SUPERSET_DB_NAME: ${SUPERSET_DB_NAME:-superset}
-      ANALYTICS_DB_URI: postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@analytics-db:5432/${POSTGRES_DB:-praktikum}
+  # --- Superset ühekordne initsialiseerimine (migratsioonid + admin kasutaja) ---
+  superset-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: synteetilised-superset-init
     depends_on:
       superset-db:
         condition: service_healthy
-      analytics-db:
-        condition: service_healthy
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset-home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER}:${SUPERSET_DB_PASSWORD}@superset-db:5432/${SUPERSET_DB_NAME}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USER}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} && superset init"
+    restart: "no"
+
+  # --- Apache Superset näidikulaud ---
+  superset:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: synteetilised-superset
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
     ports:
       - "${SUPERSET_PORT_HOST:-8088}:8088"
     volumes:
-      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
-      - ./superset/dashboards:/app/dashboards
-    command:
-      - bash
-      - -c
-      - |
-        pip install psycopg2-binary --quiet --no-cache-dir
-        superset db upgrade
-        superset fab create-admin \
-          --username admin \
-          --firstname Admin \
-          --lastname Admin \
-          --email admin@localhost \
-          --password admin 2>/dev/null || true
-        superset init
-        gunicorn \
-          --bind '0.0.0.0:8088' \
-          --workers 2 \
-          --timeout 120 \
-          --limit-request-line 0 \
-          'superset.app:create_app()'
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset-home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER}:${SUPERSET_DB_PASSWORD}@superset-db:5432/${SUPERSET_DB_NAME}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    command: ["/app/docker/entrypoints/run-server.sh"]
     restart: always
 
 volumes:
@@ -187,3 +192,4 @@ volumes:
   airflow-db-volume:
   airflow-logs:
   superset-db-volume:
+  superset-home:

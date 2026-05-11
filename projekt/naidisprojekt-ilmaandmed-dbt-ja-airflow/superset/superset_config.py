@@ -1,16 +1,15 @@
 import os
 
-# Superset metaandmebaasi ühendus
-SQLALCHEMY_DATABASE_URI = (
-    "postgresql+psycopg2://"
-    f"{os.environ.get('SUPERSET_DB_USER', 'superset')}:"
-    f"{os.environ.get('SUPERSET_DB_PASSWORD', 'superset')}@"
-    f"{os.environ.get('SUPERSET_DB_HOST', 'superset-db')}:5432/"
-    f"{os.environ.get('SUPERSET_DB_NAME', 'superset')}"
-)
+SQLALCHEMY_DATABASE_URI = os.environ["DATABASE_URI"]
+SECRET_KEY = os.environ["SECRET_KEY"]
 
-SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "supersetsecretkey123")
+# Redis puudub — kasutatakse lihtsat mälupõhist vahemälu
+CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache"}
+FILTER_STATE_CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache"}
+EXPLORE_FORM_DATA_CACHE_CONFIG = {"CACHE_TYPE": "SimpleCache"}
 
-# Arenguks sobiv seadistus (produktsioonikeskkonnas lülita sisse)
-TALISMAN_ENABLED = False
-WTF_CSRF_ENABLED = False
+FEATURE_FLAGS = {
+    "ENABLE_TEMPLATE_PROCESSING": True,
+}
+
+WTF_CSRF_ENABLED = True
