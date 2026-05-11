@@ -1,4 +1,6 @@
-x-superset-image: &superset-image apache/superset:6.0.0
+x-superset-build: &superset-build
+  context: .
+  dockerfile: Dockerfile.superset
 
 services:
 
@@ -30,13 +32,13 @@ services:
     volumes:
       - superset_db:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER} -d ${SUPERSET_DB_NAME}"]
       interval: 5s
       retries: 10
 
   # Initsialiseerimine: migratsioonid + admini kasutaja + rollid (jookseb üks kord läbi)
   superset-init:
-    image: *superset-image
+    build: *superset-build
     container_name: praktikum-supersetinit-09
     depends_on:
       superset-db:
@@ -51,22 +53,14 @@ services:
       ADMIN_USERNAME: ${SUPERSET_ADMIN_USER}
       ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
       ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
-    entrypoint: /bin/sh
-    command: >
-      -c "
-        superset db upgrade &&
-        superset fab create-admin
-          --username $${ADMIN_USERNAME}
-          --firstname Admin
-          --lastname User
-          --email $${ADMIN_EMAIL}
-          --password $${ADMIN_PASSWORD} &&
-        superset init
-      "
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} && superset init"
 
   # Superset veebirakendus
   superset:
-    image: *superset-image
+    build: *superset-build
     container_name: praktikum-superset-09
     depends_on:
       superset-init:
@@ -80,11 +74,7 @@ services:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER}:${SUPERSET_DB_PASSWORD}@superset-db:5432/${SUPERSET_DB_NAME}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY}
-    entrypoint: /bin/sh
-    command: >
-      -c "gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120
-          --limit-request-line 0 --limit-request-field_size 0
-          'superset.app:create_app()'"
+    command: ["/app/docker/entrypoints/run-server.sh"]
 
   # Pythoni konteiner andmete laadimiseks (CSV → andmebaas) ja REST API serveerimiseks
   python:
