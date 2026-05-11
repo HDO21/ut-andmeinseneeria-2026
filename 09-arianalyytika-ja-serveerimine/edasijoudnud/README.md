@@ -378,7 +378,7 @@ Vali üks kolmest mart-mudelist ja kirjuta **mõõdiku definitsioon**, mis vasta
 | **Detailsusaste** (_granularity_) | Andmerea täpsustase, nt üks rida kuu, kaupluse ja kategooria kohta |
 | **REST API** | Veebistandard andmevahetuseks: klient saadab HTTP-päringu, server vastab JSON-iga |
 | **API-võti** (_API key_) | Salajane tunnus päises, mis tõendab päringu saatja identiteeti |
-| **Reverse ETL** | Andmete saatmine analüütikaladust tagasi operatiivsetesse süsteemidesse |
+| **Reverse ETL** | Andmete saatmine analüütikast tagasi operatiivsetesse süsteemidesse |
 | **Saladuste haldur** (_secrets manager_) | Tööriist paroolide ja võtmete turvaliseks hoidmiseks (Vault, AWS Secrets Manager) |
 
 ## Viited
