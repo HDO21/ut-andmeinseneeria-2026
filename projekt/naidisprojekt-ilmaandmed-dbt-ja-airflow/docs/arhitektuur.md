@@ -12,10 +12,10 @@ Millistes Eesti asulates ja millistel järgmistel päevadel on ilm kõige sobiva
 
 ## Andmeallikad
 
-| Allikas | Tüüp | Muutuvus ajas | Kasutus |
-|---------|------|---------------|---------|
-| Open-Meteo Forecast API | Avalik HTTP API, ilma võtmeta | Prognoos muutub, kui ilmaennustust uuendatakse | Tunnipõhised ilmaandmed (temperatuur, sademed, tuul, päevavalgus) |
-| `seeds/asukohad.csv` | Staatiline dbt seed | Muutub ainult projekti muutmisel | Asukohtade koordinaadid API päringuteks |
+| Allikas | Tüüp | Ajas muutuv? | Roll |
+|---------|------|--------------|------|
+| Open-Meteo Forecast API | Avalik HTTP API, ilma võtmeta | Jah, prognoos uueneb iga tunni järel | Põhiandmevoog — tunnipõhised ilmaandmed (temperatuur, sademed, tuul, päevavalgus) |
+| `seeds/asukohad.csv` | Staatiline dbt seed | Ei, muutub ainult projekti muutmisel | Asukohtade koordinaadid API päringuteks |
 
 ## Andmevoog
 

@@ -14,10 +14,10 @@
 
 ## Andmeallikad
 
-| Allikas | Tüüp | Muutuvus ajas | Kasutus |
-|---------|------|---------------|---------|
-| [Nimi] | [API / CSV / DB] | [Uueneb iga X tundi / päeva] | [Milleks kasutatakse?] |
-| [Nimi] | [Staatiline / Dünaamiline] | [Muutub ainult projekti muutmisel] | [Milleks kasutatakse?] |
+| Allikas | Tüüp | Ajas muutuv? | Roll |
+|---------|------|--------------|------|
+| [Nimi] | [API / CSV / DB] | Jah, [iga X tundi / päeva] | [Milleks kasutatakse?] |
+| [Nimi] | [seed / dim-tabel] | Ei, staatiline | [Milleks kasutatakse?] |
 
 ## Andmevoog
 
@@ -28,7 +28,7 @@ flowchart LR
     staging --> transform[Transformatsioon]
     transform --> mart[(mart)]
     mart --> dashboard[Näidikulaud]
-    mart --> quality[quality.test_results]
+    mart --> quality[Andmekvaliteedi testid]
     scheduler[Scheduler] --> ingest
 ```
 
@@ -40,7 +40,6 @@ flowchart LR
 |------|------|
 | `staging` | Hoiab allika andmeid töötlemata kujul. |
 | `mart` | Hoiab transformeeritud ja ärilogikat sisaldavaid tabeleid. |
-| `quality` | Hoiab andmekvaliteedi testide tulemusi. |
 
 ## Tööjaotus
 

@@ -29,11 +29,11 @@ if [ ! -f "$DASHBOARD_FILE" ]; then
 fi
 
 echo "Kopeerime dashboard faili konteinerisse..."
-docker compose cp "$DASHBOARD_FILE" "$CONTAINER:/app/dashboards/dashboard.zip"
+docker compose cp "$DASHBOARD_FILE" "$CONTAINER:/tmp/dashboard.zip"
 
 echo "Impordime dashboard'i Supersetti..."
 docker compose exec "$CONTAINER" superset import-dashboards \
-  --path /app/dashboards/dashboard.zip \
+  --path /tmp/dashboard.zip \
   --username admin
 
 echo "Valmis! Ava Superset: http://localhost:8088"

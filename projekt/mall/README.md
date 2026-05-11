@@ -1,6 +1,6 @@
 # [GRUPI NIMI] — [PROJEKTI PEALKIRI]
 
-> **Juhend:** Asenda kõik nurksulgudes plankid oma sisuga enne esitamist. Kustuta see juhendrida.
+> **Juhend:** Asenda kõik nurksulgudes vormid oma sisuga enne esitamist. Kustuta see juhendrida.
 
 ## Äriküsimus
 
@@ -27,9 +27,10 @@ Täpsem kirjeldus: [`docs/arhitektuur.md`](docs/arhitektuur.md)
 
 ## Andmestik
 
-| Allikas | Tüüp | Uueneb |
-|---------|------|--------|
-| [Andmeallika nimi] | [API / fail / andmebaas] | [Kui tihti?] |
+| Allikas | Tüüp | Ajas muutuv? | Roll |
+|---------|------|--------------|------|
+| [Andmeallika nimi] | [API / fail / andmebaas] | Jah, [iga tund / päevas / muu] | Põhiandmevoog |
+| [Teise allika nimi] | [seed / dim-tabel] | Ei, staatiline | Kõrvaltabel |
 
 ## Stack
 
@@ -62,6 +63,17 @@ docker compose up -d --build
 Airflow (kui kasutatakse): http://localhost:8080 (kasutaja: airflow / parool: airflow)
 Näidikulaud: http://localhost:[PORT]
 
+## Saladused ja konfiguratsioon
+
+Kõik saladused (paroolid, API võtmed, andmebaasi URL-id) on `.env` failis. Repos on ainult `.env.example`, mis näitab vajalike muutujate struktuuri ilma tegelike väärtusteta. Päris `.env` faili ei tohi GitHubi panna - see on `.gitignore`-s.
+
+Vajalikud muutujad:
+
+| Muutuja | Tähendus | Näide |
+|---------|----------|-------|
+| `DB_PASSWORD` | PostgreSQL parool | (saladus) |
+| `[teised]` | ... | ... |
+
 ## Andmevoog lühidalt
 
 1. **Sissevõtt** — [Kirjelda, kuidas andmed allikast kätte saadakse]
@@ -69,6 +81,17 @@ Näidikulaud: http://localhost:[PORT]
 3. **Transformatsioon** — [Kirjelda peamised arvutused ja mudelid]
 4. **Testimine** — [Mitu] andmekvaliteedi testi kontrollivad korrektsust
 5. **Näidikulaud** — [Kirjelda lühidalt, mida näidikulaud näitab]
+
+## Andmekvaliteedi testid
+
+Projekt kontrollib järgmist:
+
+1. [Test 1 - nt: kasutajate ID on unikaalne]
+2. [Test 2 - nt: tellimuse summa pole null]
+3. [Test 3 - nt: kuupäev jääb vahemikku 2020-2026]
+[Lisa rohkem, kui sul on]
+
+Testide tulemused: [kuhu salvestatakse / kuidas vaadata]
 
 ## Projekti struktuur
 
@@ -83,6 +106,17 @@ Näidikulaud: http://localhost:[PORT]
 │   └── progress.md         ← nädal 2 väljund
 └── ...                     ← ülejäänud projektifailid
 ```
+
+## Kokkuvõte, puudused ja võimalikud edasiarendused
+
+**Kokkuvõte:**
+- [Loetle, mis on lõpule viidud, mis töötab hästi]
+
+**Puudused:**
+- [Loetle ausalt, mis jäi tegemata - see ei mõjuta hinnet negatiivselt, vaid aitab hinnata]
+
+**Mis edasi:**
+- [Mida tahaksid edasi teha, kui aega oleks rohkem]
 
 ## Meeskond
 

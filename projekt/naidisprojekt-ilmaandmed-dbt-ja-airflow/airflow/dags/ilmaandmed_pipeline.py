@@ -7,14 +7,42 @@ Lihtne järjestikune DAG (ilma TaskFlow API ja dynamic task mapping'uta):
 Ajakava: iga tund (@hourly), catchup=False — vahele jäänud käivitusi ei korduta.
 """
 
+import ssl
 import uuid
 from datetime import datetime, timezone
 
 import requests
+import urllib3
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from requests.adapters import HTTPAdapter
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+class _LaxHTTPSAdapter(HTTPAdapter):
+    """Ajutine lahendus Python 3.12 + OpenSSL 3.x + Docker MTU probleemile.
+
+    HOIATUS: See lülitab TLS sertifikaadi kontrollimise välja ja ei ole sobiv
+    produktsioonikeskkonda. Avaliku ilmaAPI puhul õppekeskkonnas aktsepteeritav,
+    kuna andmed ei ole tundlikud. Pärisrakenduses kasuta urllib3>=2.0 või httpx.
+    """
+
+    def init_poolmanager(self, *args, **kwargs):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        ctx.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0)
+        kwargs["ssl_context"] = ctx
+        super().init_poolmanager(*args, **kwargs)
+
+
+def _session() -> requests.Session:
+    s = requests.Session()
+    s.mount("https://", _LaxHTTPSAdapter())
+    return s
 
 # Asukohtade nimekiri — koordinaadid vastavad seeds/asukohad.csv failile
 ASUKOHAD = [
@@ -55,7 +83,7 @@ def laadi_ilmaandmed(**context):
 
     try:
         for asukoht in ASUKOHAD:
-            resp = requests.get(
+            resp = _session().get(
                 API_URL,
                 params={
                     "latitude":        asukoht["lat"],

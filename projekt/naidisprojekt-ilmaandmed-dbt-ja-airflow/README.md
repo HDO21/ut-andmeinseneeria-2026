@@ -14,15 +14,30 @@ Millistes Eesti asulates ja millistel järgmistel päevadel on ilm kõige sobiva
 2. Parimad 3-tunnised ajaaknad (kesk_skoor ≥ 50) päeva ja asukoha lõikes
 3. Päevane soovitus (Väga sobiv / Sobiv / Piiripealne / Ebasoodne)
 
+## Andmestik
+
+| Allikas | Tüüp | Ajas muutuv? | Roll |
+|---------|------|--------------|------|
+| Open-Meteo Forecast API | Avalik HTTP API, ilma võtmeta | Jah, prognoos uueneb iga tunni järel | Põhiandmevoog — tunnipõhised ilmaandmed |
+| `seeds/asukohad.csv` | Staatiline dbt seed | Ei, muutub ainult projekti muutmisel | Asukohtade koordinaadid API päringuteks |
+
 ## Stack
 
-| Komponent | Tööriist | Otstarve |
-|-----------|---------|---------|
-| Orkestreerimine | Apache Airflow 3.x | Ajakavastab andmete laadimise ja dbt käivitamise |
-| Transformatsioon | dbt Core 1.10 | Puhastab, skoorib ja koondab andmed |
-| Andmehoidla | PostgreSQL (pgDuckDB) | staging + intermediate + marts kihid |
-| Näidikulaud | Apache Superset 6.x | 3 interaktiivset chart'i |
-| Andmeallikas | Open-Meteo API | Avalik, tasuta, ilma võtmeta |
+| Komponent | Tööriist |
+|-----------|---------|
+| Orkestreerimine | Apache Airflow 3.x |
+| Transformatsioon | dbt Core 1.10 |
+| Andmehoidla | PostgreSQL (pgDuckDB) |
+| Näidikulaud | Apache Superset 6.x |
+| Andmeallikas | Open-Meteo API (tasuta, ilma võtmeta) |
+
+## Andmevoog lühidalt
+
+1. **Sissevõtt** — Airflow DAG kutsub iga tund Open-Meteo API-t 10 Eesti asukoha kohta ja laadib vastuse `staging.ilmaandmed_raw` tabelisse.
+2. **Laadimine** — Airflow `PythonOperator` kirjutab read `staging` kihti upsert-loogikaga (ON CONFLICT DO NOTHING).
+3. **Transformatsioon** — `dbt run` ehitab staging vaate → intermediate skoorivaate → marts kokkuvõttetabelid.
+4. **Testimine** — `dbt test` kontrollib 7 andmekvaliteedi testi (not_null, accepted_values).
+5. **Näidikulaud** — Superset loeb `marts.*` tabeleid ja näitab linnade paremusjärjestust, parimaid ajavahemikke ja KPI-d.
 
 ## Andmevoog
 
@@ -33,7 +48,7 @@ staging.ilmaandmed_raw           ← toorandmed
     ↓ (dbt staging view)
 staging.stg_ilmaandmed           ← puhastatud
     ↓ (dbt intermediate view)
-intermediate.int_ilmaandmed_skoor ← tunnipõhine skoor
+intermediate.int_ilmaandmed_skoor ← tunnipõhine skoor (0–100)
     ↓ (dbt marts tables)
 marts.mart_paeva_kokkuvote       ← päevane kokkuvõte
 marts.mart_parimad_ajavahemikud  ← parimad 3h aknad
@@ -48,6 +63,7 @@ Superset dashboard
 ├── compose.yml                    ← kõik teenused
 ├── .env.example                   ← kopeeri .env-iks
 ├── .gitignore
+├── Dockerfile.superset
 ├── airflow/
 │   └── dags/
 │       └── ilmaandmed_pipeline.py ← Airflow DAG (fetch → dbt run → dbt test)
@@ -57,18 +73,18 @@ Superset dashboard
 │   ├── seeds/
 │   │   └── asukohad.csv           ← 10 Eesti linna koordinaatidega
 │   ├── models/
-│   │   ├── staging/               ← 1 mudel (stg_ilmaandmed)
-│   │   ├── intermediate/          ← 1 mudel (int_ilmaandmed_skoor)
-│   │   └── marts/                 ← 2 mudelit (paeva_kokkuvote, parimad_ajavahemikud)
+│   │   ├── staging/               ← 1 mudel + testid (stg_ilmaandmed)
+│   │   ├── intermediate/          ← 1 mudel + testid (int_ilmaandmed_skoor)
+│   │   └── marts/                 ← 2 mudelit + testid
 │   └── macros/
 │       └── generate_schema_name.sql
 ├── init/
 │   └── 01_create_schemas.sql      ← loob staging skeemi ja toorandmete tabelid
 ├── superset/
-│   ├── superset_config.py         ← Superset konfiguratsioon
-│   └── dashboards/                ← dashboard eksportfailid (lisatakse pärast seadistust)
+│   ├── superset_config.py
+│   └── dashboards/                ← dashboard ZIP (lisatakse pärast seadistust)
 ├── scripts/
-│   └── import_dashboard.sh        ← dashboard importimise abiskript
+│   └── import_dashboard.sh
 └── docs/
     ├── arhitektuur.md             ← nädal 1 väljund
     └── progress.md                ← nädal 2 väljund
@@ -87,28 +103,48 @@ python -c "import secrets; print(secrets.token_hex(32))"
 # 3. Käivita kõik teenused
 docker compose up -d --build
 
-# 4. Oota ~2–3 minutit, kuni Superset initsialiseerub
+# 4. Oota ~2–3 minutit, kuni kõik teenused on käivitunud
 docker compose ps   # kõik peaksid olema "running" või "healthy"
 
 # 5. Ava Airflow UI ja käivita DAG käsitsi esimesel korral
-#    http://localhost:8080  (kasutaja: airflow / parool: airflow)
+#    http://localhost:8080  (kasutaja/parool: vt .env AIRFLOW_USER/PASSWORD)
 #    → ilmaandmed_pipeline → "Trigger DAG" nupp
 
-# 6. Ava Superset ja loo ühendus andmebaasiga
-#    http://localhost:8088  (kasutaja: vt .env SUPERSET_ADMIN_USER/PASSWORD)
-#    Settings > Database Connections > + Database > PostgreSQL
-#    SQLAlchemy URI: postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
+# 6. Ava Superset
+#    http://localhost:8088  (kasutaja/parool: vt .env SUPERSET_ADMIN_USER/PASSWORD)
 ```
 
-Seejärel saab Supersetti luua chart'e otse `marts.*` tabelitest.
+## Saladused ja konfiguratsioon
+
+Kõik paroolid ja võtmed on `.env` failis. Reposse läheb ainult `.env.example`. Päris `.env` on `.gitignore`-s.
+
+| Muutuja | Tähendus |
+|---------|----------|
+| `POSTGRES_PASSWORD` | Analüütika andmebaasi parool |
+| `AIRFLOW_USER` / `AIRFLOW_PASSWORD` | Airflow UI sisselogimine |
+| `SUPERSET_SECRET_KEY` | Superset'i sessiooniküpsiste krüptovõti — **genereeri uus**, ära jäta vaikeväärtust |
+| `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` | Superset'i admin-kasutaja |
+| `SUPERSET_DB_PASSWORD` | Superset'i metaandmebaasi parool |
+
+## Andmekvaliteedi testid
+
+dbt testid käivituvad automaatselt iga DAG-käivituse lõpus (`dbt test`). Testide ebaõnnestumine märgib Airflow töövoo punaseks.
+
+1. `staging.stg_ilmaandmed` — kriitilised veerud ei ole NULL (temperatuur, sademed, tuulekiirus, `on_paev`)
+2. `staging.stg_ilmaandmed` — `on_paev` on 0 või 1 (vigaste API vastuste tuvastamine)
+3. `intermediate.int_ilmaandmed_skoor` — `koguskoor` ei ole NULL
+4. `intermediate.int_ilmaandmed_skoor` — `sobivuse_silt` on üks neljast lubatud väärtusest
+5. `marts.mart_paeva_kokkuvote` — `kesk_skoor` ja `paeva_soovitus` ei ole NULL
+6. `marts.mart_paeva_kokkuvote` — `paeva_soovitus` on lubatud väärtuste hulgas
+7. `marts.mart_parimad_ajavahemikud` — `kesk_skoor` ja `soovitus` ei ole NULL
 
 ## dbt käsud (käsitsi käivitamiseks)
 
 ```bash
-# Vaata Airflow konteineris (dbt on sealt kättesaadav):
-docker compose exec airflow bash
+# Ava Airflow konteineri shell (dbt on sealt kättesaadav):
+docker compose exec ilmaandmed-airflow-apiserver bash
 
-# Projekti kaustas:
+# dbt projekti kaustas:
 cd /opt/airflow/dbt_project
 
 dbt seed --profiles-dir .        # laadib asukohad.csv
@@ -119,11 +155,9 @@ dbt docs generate --profiles-dir .  # genereerib dokumentatsiooni
 
 ## Superset seadistus
 
-Kui `docker compose up` on käivitunud ja DAG vähemalt korra edukalt läbi jooksnud, järgi neid samme:
+Kui DAG on vähemalt korra edukalt läbi jooksnud:
 
 ### 1. Loo andmebaasi ühendus
-
-Ava **http://localhost:8088** → logi sisse (vt `.env` `SUPERSET_ADMIN_USER/PASSWORD`).
 
 **Settings → Database Connections → + Database → PostgreSQL**
 
@@ -135,47 +169,45 @@ Ava **http://localhost:8088** → logi sisse (vt `.env` `SUPERSET_ADMIN_USER/PAS
 | USERNAME | `praktikum` |
 | PASSWORD | `praktikum` |
 
-Või lisa SQLAlchemy URI otse:
-```
-postgresql+psycopg2://praktikum:praktikum@analytics-db:5432/praktikum
-```
-
 ### 2. Registreeri datasetid
 
-**Datasets → + Dataset** — vali loodud ühendus ja registreeri kaks tabelit:
-
+**Datasets → + Dataset** — vali ühendus, seejärel:
 - `marts` → `mart_paeva_kokkuvote`
 - `marts` → `mart_parimad_ajavahemikud`
 
 ### 3. Loo chart'id
 
-Dashboard koosneb 3 chart'ist:
+**Charts → + Chart** → vali dataset → vali chart tüüp → seadista → **Create chart** → Save.
 
-| Chart | Tüüp | Dataset | Mõõdik / veerg |
-|-------|------|---------|----------------|
-| Linnade paremusjärjestus | Bar chart | `mart_paeva_kokkuvote` | X: `asukoha_nimi`, Y: `kesk_skoor` (Average) |
-| Parimad ajaaknad | Table | `mart_parimad_ajavahemikud` | Veerud: `asukoha_nimi`, `vahemiku_algus`, `kesk_skoor`, `soovitus` |
-| Päevane KPI | Big Number | `mart_paeva_kokkuvote` | Mõõdik: `max_skoor` (MAX) |
+> Kui Superset lisab automaatselt ajafiltri (nt `prognoos_kuupaev (No filter)`), jäta see `No filter` olekusse — eemaldada ei saa, aga `No filter` tähendab, et kõik andmed on nähtaval.
 
-**Charts → + Chart** → vali dataset ja chart tüüp → seadista → Save.
+**Chart 1 — Linnade paremusjärjestus**
+- Tüüp: **Bar Chart**, dataset: `mart_paeva_kokkuvote`
+- **X-axis**: `asukoha_nimi`
+- **Metrics**: `kesk_skoor` (AVG)
+- **X-Axis Sort By**: `AVG(kesk_skoor)` + lülita sisse **Sort Descending**
+
+**Chart 2 — Parimad ajaaknad**
+- Tüüp: **Table**, dataset: `mart_parimad_ajavahemikud`
+- **Columns**: `asukoha_nimi`, `vahemiku_algus`, `kesk_skoor`, `soovitus`
+- **Row limit**: 50
+
+**Chart 3 — Päevane KPI**
+- Tüüp: **Big Number**, dataset: `mart_paeva_kokkuvote`
+- **Metric**: `max_skoor` (MAX)
 
 ### 4. Loo dashboard
 
-**Dashboards → + Dashboard** → anna nimi (nt "Ilmaandmed — välitegevuse sobivus") → lohista chart'id paika → Publish.
+**Dashboards → + Dashboard** → anna nimi → lohista chart'id paika → Publish.
 
 ### 5. Ekspordi dashboard (ZIP reposse)
 
 ```bash
-# Ekspordi loodud dashboard ZIP-failina
-docker compose exec superset superset export-dashboards \
-  -f /app/dashboards/ilmaandmed_dashboard.zip
+docker compose exec superset bash -c "superset export-dashboards \
+  -f /tmp/ilmaandmed_dashboard.zip"
 
-# Kopeeri ZIP hosti failisüsteemi
-docker compose cp superset:/app/dashboards/ilmaandmed_dashboard.zip \
+docker compose cp superset:/tmp/ilmaandmed_dashboard.zip \
   superset/dashboards/ilmaandmed_dashboard.zip
-
-# Nüüd saab ZIP-i reposse commitida
-git add superset/dashboards/ilmaandmed_dashboard.zip
 ```
 
 ### 6. Impordi dashboard (kui ZIP on juba reposis)
@@ -184,15 +216,22 @@ git add superset/dashboards/ilmaandmed_dashboard.zip
 bash scripts/import_dashboard.sh
 ```
 
-Või käsitsi:
-```bash
-docker compose cp superset/dashboards/ilmaandmed_dashboard.zip \
-  superset:/app/dashboards/ilmaandmed_dashboard.zip
+## Kokkuvõte, puudused ja võimalikud edasiarendused
 
-docker compose exec superset superset import-dashboards \
-  --path /app/dashboards/ilmaandmed_dashboard.zip \
-  --username admin
-```
+**Mis töötab:**
+- Pipeline töötab end-to-end: Airflow → staging → dbt → Superset
+- dbt testid kontrollivad andmekvaliteeti automaatselt iga käivituse lõpus
+- Airflow käivitab töövoo automaatselt iga tund (`@hourly`)
+
+**Teadlikud piirangud:**
+- Superset dashboard tuleb esimesel korral käsitsi seadistada (andmebaasi ühendus, datasetid, chart'id)
+- Asukohtade nimekiri on defineeritud kahes kohas: DAG-is ja `seeds/asukohad.csv` — ideaalis peaks olema üks allikas
+- `staging.ilmaandmed_raw` kasvab piiramatult — vanade käivituste andmeid ei kustutata
+
+**Võimalikud edasiarendused:**
+- Lisada rohkem Eesti linnu seemnesse
+- Automatiseerida Superset'i datasettide ja chart'ide loomine skriptiga
+- Lisada `staging.pipeline_runs` põhjal Airflow sensor, mis kontrollib eelmise käivituse edukust enne uue alustamist
 
 ## Arhitektuur ja täpsemad otsused
 
@@ -202,14 +241,13 @@ Vaata: [`docs/arhitektuur.md`](docs/arhitektuur.md)
 
 **Näitab:**
 - Airflow + dbt + Superset integreerimist ühes `compose.yml`-s
-- Lihtsat DAG'i ilma keerukate mustriteta (PythonOperator + BashOperator)
+- Lihtsat DAG'i: `PythonOperator` (API fetch) + `BashOperator` (`dbt run`, `dbt test`)
 - dbt staging → intermediate → marts kihide mõtet
-- dbt testide kirjutamist (schema.yml)
-- Superset'i liitmist andmebaasiga
+- dbt testide kirjutamist (`schema.yml`)
+- Superset'i seadistamist andmebaasiga
 
 **Ei näita** (hoitud lihtsana):
-- Airflow TaskFlow API-d
-- Airflow dynamic task mapping'ut
-- dbt makrosid (v.a generate_schema_name)
-- dbt snapshots / SCD2 pattern'i
-- Superset'i kasutajate ja õiguste haldust
+- Airflow TaskFlow API-d ega dynamic task mapping'ut
+- dbt makrosid (v.a `generate_schema_name`)
+- dbt snapshots / SCD2 mustrit
+- Superset'i kasutajate ja rollide haldust

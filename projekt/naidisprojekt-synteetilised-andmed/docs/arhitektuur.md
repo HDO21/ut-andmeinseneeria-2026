@@ -23,10 +23,10 @@ Millistes EstiMüük OÜ kauplustes ja mis kellaaegadel on müügitõhusus (käi
 
 ## Andmeallikad
 
-| Allikas | Tüüp | Muutuvus ajas | Kasutus |
-|---------|------|---------------|---------|
-| `scripts/generate_data.py` | Python-generaator | Genereeritakse ühekorra (90 päeva ajalugu) | Sünteetilised tunnipõhised müügimõõtmised |
-| `seeds/pood.csv` | Staatiline dbt seed | Muutub ainult projekti muutmisel | Kaupluste meta-andmed (nimi, linn, suurus) |
+| Allikas | Tüüp | Ajas muutuv? | Roll |
+|---------|------|--------------|------|
+| `scripts/generate_data.py` | Python-generaator (numpy) | Ei, genereeritakse ühekorra fikseeritud seemnega | Sünteetilised tunnipõhised müügimõõtmised |
+| `seeds/pood.csv` | Staatiline dbt seed | Ei, muutub ainult projekti muutmisel | Kaupluste meta-andmed (nimi, linn, suurus) |
 
 ## Andmevoog
 

@@ -1,13 +1,15 @@
 # Ilmaandmete näidisprojekt — Airflow + dbt + Superset stack
 #
 # Teenused:
-#   analytics-db   — peamine PostgreSQL andmebaas (port 55432)
-#   airflow-db     — Airflow metaandmebaas
-#   airflow-init   — ühekordne initsialiseerimine
-#   airflow        — Airflow UI ja scheduler (port 8080)
-#   superset-db    — Superset metaandmebaas
-#   superset-init  — Superset ühekordne initsialiseerimine
-#   superset       — Superset näidikulaud (port 8088)
+#   analytics-db        — peamine PostgreSQL andmebaas (port 55432)
+#   airflow-db          — Airflow metaandmebaas
+#   airflow-init        — ühekordne initsialiseerimine
+#   airflow-apiserver   — Airflow UI ja REST API (port 8080)
+#   airflow-scheduler   — DAG-ide käivitamine
+#   airflow-dag-processor — DAG-ide parsimine
+#   superset-db         — Superset metaandmebaas
+#   superset-init       — Superset ühekordne initsialiseerimine
+#   superset            — Superset näidikulaud (port 8088)
 #
 # Käivitamine:
 #   cp .env.example .env
@@ -29,7 +31,7 @@ x-airflow-common:
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow:8080/execution/'
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW__API_AUTH__JWT_SECRET:-airflow_jwt_secret}
     AIRFLOW__API_AUTH__JWT_ISSUER: ${AIRFLOW__API_AUTH__JWT_ISSUER:-airflow}
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
@@ -118,11 +120,11 @@ services:
     user: "0:0"
     restart: "no"
 
-  # --- Airflow (API server + scheduler ühes konteineris, lihtsuse huvides) ---
-  airflow:
+  # --- Airflow API server (UI + REST API) ---
+  airflow-apiserver:
     <<: *airflow-common
-    container_name: ilmaandmed-airflow
-    command: standalone
+    container_name: ilmaandmed-airflow-apiserver
+    command: api-server
     ports:
       - "${AIRFLOW_PORT_HOST:-8080}:8080"
     healthcheck:
@@ -130,7 +132,41 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # --- Airflow scheduler ---
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: ilmaandmed-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # --- Airflow DAG processor ---
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: ilmaandmed-airflow-dagproc
+    command: dag-processor
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type DagProcessorJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
