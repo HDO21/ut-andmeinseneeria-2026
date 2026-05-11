@@ -17,7 +17,13 @@ Thumbs.db
 .vscode/
 .idea/
 
-# muu 
+# dbt
+target/
+dbt_packages/
+.user.yml
+logs/
+
+# muu
 tmp/
 temp/
 *.tmp

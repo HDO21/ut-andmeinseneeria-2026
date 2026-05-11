@@ -176,8 +176,8 @@ dbt loob kaks skeemikihti:
    - Port: `5432`
    - Database name: väärtus `.env`-st (`POSTGRES_DB`)
    - Username / Password: väärtused `.env`-st (`POSTGRES_USER` / `POSTGRES_PASSWORD`)
-4. Klõpsa **Test Connection**, peaks näitama „Connection looks good!"
-5. Salvesta nimega **Praktikum DB**
+4. Klõpsa **Connect**, peaks näitama „Database connected"
+5. Vajuta Finish
 
 ---
 
@@ -213,21 +213,26 @@ LIMIT 5;
 
 ## Ülesanne 4: Andmekogumite registreerimine
 
-Mine **Datasets → + Dataset** ja registreeri:
+Mine **Datasets → + Dataset** ja registreeri :
 
-| Andmekogumi nimi | Skeem | Tabel |
-|---|---|---|
-| Müük kuus | marts | mart_myyk_kuus |
-| Müük kategooria järgi | marts | mart_myyk_kategooria |
-| Müük piirkonna järgi | marts | mart_myyk_piirkond |
+| Skeem | Tabel |
+|---|---|
+| marts | mart_myyk_kuus |
+| marts | mart_myyk_kategooria |
+| marts | mart_myyk_piirkond |
+
+Vasakul menüüs vali õige andmebaas, schema `marts` ja vastav tabel.  
+Seejärel vajuta paremal all noolekest ning vali `Create dataset`
 
 ---
 
 ## Ülesanne 5: Diagrammide loomine
 
+Diagramme saab luua `Charts` menüüst. 
+
 ### 5.1 Igakuine müük (joondiagramm)
 
-- Dataset: **Müük kuus**
+- Dataset: **mart_myyk_kuus**
 - Visualization type: **Line Chart**
 - X-axis: `month_start`
 - Metrics: `SUM(tulu_kokku)`
@@ -269,7 +274,7 @@ Mine **Datasets → + Dataset** ja registreeri:
    - Müük kategooriate kaupa
    - Müük piirkondade kaupa
 4. Paiguta diagrammid loogiliselt (KPI-d ülaosas, detailid all)
-5. Lisa filter: **Date Range** → veerg `month_start`
+5. Lisa filter: **Date Range** → veerg `month_start` (vasakul menüüs, settings, Add or edit filters)
 6. Salvesta ja avalda (**Publish**)
 
 > **Parimate praktikate märkused**
@@ -307,6 +312,8 @@ curl -H "X-API-Key: <sinu API_KEY väärtus>" http://localhost:8000/api/myyk/kuu
 # Ilma võtmeta, tagastab 401 Unauthorized
 curl http://localhost:8000/api/myyk/kuus
 ```
+
+Saad katsetada ka brauseris, `docs` lehel vajuta tabaluku märki ja sisesta api võtme väärtus. 
 
 Saadaval olevad lõpp-punktid:
 
