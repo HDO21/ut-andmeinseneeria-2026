@@ -1,0 +1,175 @@
+# Käivitamine:
+#   cp .env.example .env
+#   docker compose up -d --build
+
+x-superset-build: &superset-build
+  context: .
+  dockerfile: Dockerfile.superset
+
+services:
+  db:
+    image: postgres:16
+    container_name: praktikum-db-09-base
+    env_file:
+      - .env
+    ports:
+      - "${DB_PORT_HOST:-5439}:5432"
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+      - pgdata_09_base:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-praktikum} -d ${POSTGRES_DB:-praktikum}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: praktikum-bootstrap-09-base
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-praktikum}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      DB_NAME: ${POSTGRES_DB:-praktikum}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-praktikum}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      PGDATABASE: ${POSTGRES_DB:-praktikum}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/app/scripts
+      - ./source_data:/app/source_data
+    working_dir: /app
+    entrypoint: ["python", "scripts/microbatch.py", "bootstrap"]
+    restart: "no"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: praktikum-scheduler-09-base
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-praktikum}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      DB_NAME: ${POSTGRES_DB:-praktikum}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-praktikum}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      PGDATABASE: ${POSTGRES_DB:-praktikum}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/app/scripts
+      - ./source_data:/app/source_data
+      - ./scheduler:/app/scheduler
+      - ./logs:/var/log/praktikum
+    working_dir: /app
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep cron >/dev/null"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  superset-db:
+    image: postgres:16
+    container_name: praktikum-supersetdb-09-base
+    environment:
+      POSTGRES_USER: ${SUPERSET_DB_USER:-superset}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:-superset}
+      POSTGRES_DB: ${SUPERSET_DB_NAME:-superset_meta}
+    volumes:
+      - superset_db_09_base:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB_NAME:-superset_meta}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  superset-init:
+    build: *superset-build
+    container_name: praktikum-supersetinit-09-base
+    depends_on:
+      superset-db:
+        condition: service_healthy
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@example.com}
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && (superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true) && superset init"
+    restart: "no"
+
+  superset-import:
+    build: *superset-build
+    container_name: praktikum-supersetimport-09-base
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      superset-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - ./superset:/app/praktikum_superset
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      POSTGRES_USER: ${POSTGRES_USER:-praktikum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      POSTGRES_DB: ${POSTGRES_DB:-praktikum}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+    command:
+      - /bin/sh
+      - -c
+      - "python /app/praktikum_superset/zip_dashboard.py /app/praktikum_superset/dashboard_export /tmp/praktikum_09_dashboard.zip && superset import-dashboards --path /tmp/praktikum_09_dashboard.zip --username $${SUPERSET_ADMIN_USER}"
+    restart: "no"
+
+  superset:
+    build: *superset-build
+    container_name: praktikum-superset-09-base
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    ports:
+      - "${SUPERSET_PORT_HOST:-8088}:8088"
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+    command: ["/app/docker/entrypoints/run-server.sh"]
+
+volumes:
+  pgdata_09_base:
+    name: praktikum-db-09-base-pgdata
+  superset_db_09_base:
+    name: praktikum-supersetdb-09-base-pgdata
+  superset_home_09_base:
+    name: praktikum-supersethome-09-base

@@ -1,0 +1,51 @@
+slice_name: Viimased laadimised
+description: Croni mikrobatch töövoo logi viimased read.
+certified_by: null
+certification_details: null
+viz_type: table
+params:
+  datasource: 2__table
+  viz_type: table
+  query_mode: raw
+  groupby: []
+  time_grain_sqla: P1D
+  temporal_columns_lookup:
+    watermark_from: true
+    watermark_to: true
+    started_at: true
+    finished_at: true
+  all_columns:
+  - finished_at
+  - run_type
+  - status
+  - rows_inserted
+  - watermark_from
+  - watermark_to
+  - message
+  percent_metrics: []
+  adhoc_filters:
+  - clause: WHERE
+    subject: finished_at
+    operator: TEMPORAL_RANGE
+    comparator: No filter
+    expressionType: SIMPLE
+  order_by_cols:
+  - '["finished_at", false]'
+  order_desc: true
+  server_page_length: 10
+  row_limit: 10
+  percent_metric_calculation: row_limit
+  table_timestamp_format: smart_date
+  allow_render_html: false
+  show_cell_bars: true
+  color_pn: true
+  comparison_color_scheme: Green
+  comparison_type: values
+  extra_form_data: {}
+  dashboards: []
+query_context: >-
+  {"datasource":{"id":2,"type":"table"},"force":false,"queries":[{"filters":[{"col":"finished_at","op":"TEMPORAL_RANGE","val":"No filter"}],"extras":{"time_grain_sqla":"P1D","having":"","where":""},"applied_time_extras":{},"columns":["finished_at","run_type","status","rows_inserted","watermark_from","watermark_to","message"],"orderby":[["finished_at",false]],"annotation_layers":[],"row_limit":10,"series_limit":0,"group_others_when_limit_reached":false,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{},"post_processing":[],"time_offsets":[]}],"form_data":{"datasource":"2__table","viz_type":"table","query_mode":"raw","groupby":[],"time_grain_sqla":"P1D","temporal_columns_lookup":{"watermark_from":true,"watermark_to":true,"started_at":true,"finished_at":true},"all_columns":["finished_at","run_type","status","rows_inserted","watermark_from","watermark_to","message"],"percent_metrics":[],"adhoc_filters":[{"clause":"WHERE","subject":"finished_at","operator":"TEMPORAL_RANGE","comparator":"No filter","expressionType":"SIMPLE"}],"order_by_cols":["[\"finished_at\", false]"],"order_desc":true,"server_page_length":10,"row_limit":10,"percent_metric_calculation":"row_limit","table_timestamp_format":"smart_date","allow_render_html":false,"show_cell_bars":true,"color_pn":true,"comparison_color_scheme":"Green","comparison_type":"values","extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full","include_time":false},"result_format":"json","result_type":"full"}
+cache_timeout: 5
+uuid: aaaaaaaa-aaaa-4aaa-8aaa-000000000002
+version: 1.0.0
+dataset_uuid: 33333333-3333-4333-8333-000000000002
