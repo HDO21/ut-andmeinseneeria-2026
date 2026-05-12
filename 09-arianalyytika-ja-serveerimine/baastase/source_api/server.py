@@ -54,7 +54,6 @@ def stable_int(seed: str, minimum: int, maximum: int) -> int:
 
 
 def stable_fraction(seed: str) -> float:
-    """Tagasta sama sisendi jaoks alati sama arv vahemikus 0 kuni 1."""
     seeded_text = f"{SEED_PREFIX}|{seed}"
     value = int(sha256(seeded_text.encode("utf-8")).hexdigest()[:16], 16)
     return (value + 0.5) / (16**16)
@@ -72,23 +71,19 @@ def stable_gaussian(seed: str, mean: float, stddev: float) -> float:
 
 
 def read_csv_dicts(path: Path) -> list[dict]:
-    """Loe CSV fail sõnastike loendiks."""
     with path.open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
 
 
 def load_products() -> list[dict]:
-    """Loe tootekataloog."""
     return read_csv_dicts(SOURCE_DATA_DIR / "products.csv")
 
 
 def load_stores() -> list[dict]:
-    """Loe poodide kataloog."""
     return read_csv_dicts(SOURCE_DATA_DIR / "stores.csv")
 
 
 def source_end_date() -> date:
-    """Tagasta viimane kuupäev, mille kohta API sündmusi pakub."""
     return SOURCE_START_DATE + timedelta(days=SOURCE_MAX_DAYS - 1)
 
 
@@ -109,7 +104,6 @@ def get_order_count(logical_date: date) -> int:
 
 
 def count_events_before(logical_date: date) -> int:
-    """Loenda, mitu sündmust jääb enne antud kuupäeva."""
     total = 0
     current_date = SOURCE_START_DATE
     while current_date < logical_date:
@@ -119,7 +113,6 @@ def count_events_before(logical_date: date) -> int:
 
 
 def date_for_sequence(event_sequence: int) -> date:
-    """Leia sündmuse järjekorranumbri põhjal selle kuupäev."""
     if event_sequence < 1:
         raise ValueError("event_sequence peab olema vähemalt 1.")
 
@@ -224,7 +217,6 @@ def build_orders(logical_date: date) -> list[dict]:
 
 
 def build_events_after(after_sequence: int, limit: int) -> list[dict]:
-    """Tagasta kuni `limit` sündmust pärast antud järjekorranumbrit."""
     if limit < 1:
         return []
 
@@ -262,12 +254,9 @@ def backfill_state(days: int) -> dict:
 
 
 class RequestHandler(BaseHTTPRequestHandler):
-    """HTTP päringute käsitleja source API jaoks."""
-
     server_version = "Praktikum09SourceAPI/1.0"
 
     def _send_json(self, status_code: int, payload: dict) -> None:
-        """Saada vastus JSON kujul."""
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -276,7 +265,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _send_html(self, status_code: int, html: str) -> None:
-        """Saada brauseris loetav HTML vastus."""
         encoded = html.encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -285,7 +273,6 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _build_docs_page(self) -> str:
-        """Ehita väike avaleht, et API oleks brauseris kontrollitav."""
         state = backfill_state(14)
         return f"""<!doctype html>
 <html lang="et">

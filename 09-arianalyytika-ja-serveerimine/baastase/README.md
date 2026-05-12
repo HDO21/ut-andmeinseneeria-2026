@@ -599,23 +599,6 @@ Müügikuupäev
 enda ajaveergu. Praktikumi müügi-datasetites on selleks `sales_date`, mida
 Superset võib näidata pealkirjaga `Müügikuupäev`.
 
-Oluline on eristada kahte seadistust:
-
-- charti või dataseti ajaveerg ütleb, millist kuupäevavälja filter kasutab;
-- filtri ulatus ütleb, millistele chartidele filter rakendub.
-
-Kui KPI chart ei ole filtri ulatuses, siis KPI ei muutu isegi siis, kui tema
-datasetis on `sales_date` olemas. Kui KPI datasetis on ajaveeruks jäänud
-`last_processed_at`, siis filter kasutab töötlusaega, mitte müügikuupäeva.
-
-Kontrolli vajadusel datasetite seadistust:
-
-| Dataset | Ajaveerg |
-|---------|----------|
-| `v_dashboard_kpi` | `sales_date` ehk `Müügikuupäev` |
-| `v_sales_daily` | `sales_date` ehk `Müügikuupäev` |
-| `v_sales_by_category` | `sales_date` ehk `Müügikuupäev` |
-
 Ära seo seda filtrit datasetiga `v_recent_microbatch_runs`. Selle logitabeli
 ajaveerud on `finished_at`, `started_at`, `watermark_from` ja `watermark_to`,
 aga need ei tähenda sama asja kui müügikuupäev.
@@ -628,10 +611,14 @@ Kui filter ei rakendu kõigile joonistele, kontrolli, kas joonised kasutavad dat
 Superset võib sama veergu näidata nimega `Müügikuupäev`.
 
 Kui KPI ei muutu, ava filtri seadistus uuesti ja kontrolli, et `Kogukäive KPI`
-on filtri ulatuses. Vaata ka, et dashboard on pärast filtri muutmist salvestatud.
-Kui stack oli enne KPI parandust juba käivitatud, võib Superseti metaandmetes
-olla alles vana KPI dataset. Sel juhul tee puhas algus käsuga `docker compose down -v`
-ja käivita stack uuesti.
+on filtri ulatuses. Kui muutsid praktikumi faile pärast esimest käivitust,
+tee puhas algus, sest Superseti varasem metaandmete maht võib hoida vana
+dashboardi seadistust.
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
 
 ## 12. Sõnasta mõõdiku piirangud
 

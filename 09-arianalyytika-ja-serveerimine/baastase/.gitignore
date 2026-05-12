@@ -3,3 +3,4 @@ logs/*
 !logs/.gitkeep
 __pycache__/
 *.pyc
+superset/dashboard_export_*.zip
