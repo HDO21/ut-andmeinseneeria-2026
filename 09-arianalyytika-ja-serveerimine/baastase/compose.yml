@@ -7,8 +7,10 @@ x-superset-build: &superset-build
   dockerfile: Dockerfile.superset
 
 services:
+  # Üks PostgreSQL server hoiab nii praktikumi andmeid kui ka Superseti
+  # metaandmeid. See hoiab baastaseme stacki väikese.
   db:
-    image: postgres:16
+    image: pgduckdb/pgduckdb:18-v1.1.1
     container_name: praktikum-db-09-base
     env_file:
       - .env
@@ -16,13 +18,40 @@ services:
       - "${DB_PORT_HOST:-5439}:5432"
     volumes:
       - ./init:/docker-entrypoint-initdb.d
-      - pgdata_09_base:/var/lib/postgresql/data
+      - pgdata_09_base:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-praktikum} -d ${POSTGRES_DB:-praktikum}"]
       interval: 10s
       retries: 5
       start_period: 5s
 
+  # Kohalik veebipoe sündmuste allikas. Scheduler küsib siit andmeid HTTP kaudu.
+  source-api:
+    image: python:3.13-slim
+    container_name: praktikum-source-api-09-base
+    env_file:
+      - .env
+    environment:
+      SOURCE_API_PORT: ${SOURCE_API_PORT:-8019}
+      SOURCE_DATA_DIR: /app/source_data
+    working_dir: /app
+    volumes:
+      - ./source_api:/app/source_api
+      - ./source_data:/app/source_data
+    command: ["python", "/app/source_api/server.py"]
+    ports:
+      - "${SOURCE_API_PORT_HOST:-8019}:${SOURCE_API_PORT:-8019}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${SOURCE_API_PORT:-8019}/health', timeout=5).read()\"",
+        ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  # Ühekordne töö: laadib tooted, poed ja algse müügiajaloo.
   bootstrap:
     build:
       context: .
@@ -41,8 +70,11 @@ services:
       PGUSER: ${POSTGRES_USER:-praktikum}
       PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       PGDATABASE: ${POSTGRES_DB:-praktikum}
+      SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
     depends_on:
       db:
+        condition: service_healthy
+      source-api:
         condition: service_healthy
     volumes:
       - ./scripts:/app/scripts
@@ -51,6 +83,7 @@ services:
     entrypoint: ["python", "scripts/microbatch.py", "bootstrap"]
     restart: "no"
 
+  # Püsiv töövoo konteiner. Cron käivitab siin mikrobatch'i iga minuti järel.
   scheduler:
     build:
       context: .
@@ -69,6 +102,7 @@ services:
       PGUSER: ${POSTGRES_USER:-praktikum}
       PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       PGDATABASE: ${POSTGRES_DB:-praktikum}
+      SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
     depends_on:
       bootstrap:
         condition: service_completed_successfully
@@ -84,33 +118,19 @@ services:
       retries: 5
       start_period: 10s
 
-  superset-db:
-    image: postgres:16
-    container_name: praktikum-supersetdb-09-base
-    environment:
-      POSTGRES_USER: ${SUPERSET_DB_USER:-superset}
-      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD:-superset}
-      POSTGRES_DB: ${SUPERSET_DB_NAME:-superset_meta}
-    volumes:
-      - superset_db_09_base:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER:-superset} -d ${SUPERSET_DB_NAME:-superset_meta}"]
-      interval: 10s
-      retries: 5
-      start_period: 5s
-
+  # Ühekordne Superseti seadistus: andmebaasi migratsioonid ja admin-kasutaja.
   superset-init:
     build: *superset-build
     container_name: praktikum-supersetinit-09-base
     depends_on:
-      superset-db:
+      db:
         condition: service_healthy
     volumes:
       - ./superset/superset_config.py:/app/superset_config.py
       - superset_home_09_base:/app/superset_home
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
-      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
       ADMIN_USERNAME: ${SUPERSET_ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
@@ -121,6 +141,8 @@ services:
       - "superset db upgrade && (superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true) && superset init"
     restart: "no"
 
+  # Ühekordne import: lisab Superseti andmebaasiühenduse, datasetid,
+  # starter-joonised ja starter-dashboardi.
   superset-import:
     build: *superset-build
     container_name: praktikum-supersetimport-09-base
@@ -135,7 +157,7 @@ services:
       - superset_home_09_base:/app/superset_home
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
-      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
       POSTGRES_USER: ${POSTGRES_USER:-praktikum}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
@@ -149,11 +171,12 @@ services:
       - "python /app/praktikum_superset/zip_dashboard.py /app/praktikum_superset/dashboard_export /tmp/praktikum_09_dashboard.zip && superset import-dashboards --path /tmp/praktikum_09_dashboard.zip --username $${SUPERSET_ADMIN_USER}"
     restart: "no"
 
+  # Superseti veebirakendus, mida õppija brauseris kasutab.
   superset:
     build: *superset-build
     container_name: praktikum-superset-09-base
     depends_on:
-      superset-init:
+      superset-import:
         condition: service_completed_successfully
     ports:
       - "${SUPERSET_PORT_HOST:-8088}:8088"
@@ -162,14 +185,12 @@ services:
       - superset_home_09_base:/app/superset_home
     environment:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
-      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER:-superset}:${SUPERSET_DB_PASSWORD:-superset}@superset-db:5432/${SUPERSET_DB_NAME:-superset_meta}"
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
     command: ["/app/docker/entrypoints/run-server.sh"]
 
 volumes:
   pgdata_09_base:
     name: praktikum-db-09-base-pgdata
-  superset_db_09_base:
-    name: praktikum-supersetdb-09-base-pgdata
   superset_home_09_base:
     name: praktikum-supersethome-09-base

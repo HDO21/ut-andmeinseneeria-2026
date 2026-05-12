@@ -2,8 +2,8 @@
 
 Skript teeb kaks tööd:
 
-* `bootstrap` laadib dimensioonid ja loob algse ajaloo;
-* `run-scheduled` lisab väikese koguse uusi müügisündmusi.
+* `bootstrap` laadib dimensioonid ja toob source API-st algse ajaloo;
+* `run-scheduled` toob source API-st järgmise väikese koguse müügisündmusi.
 
 Cron käivitab `run-scheduled` käsu iga minuti järel. Superset loeb samu tabeleid
 ja vaateid, seega on dashboardil näha nii müügiandmete kui ka töövoo logi muutus.
@@ -13,14 +13,16 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
+import json
 import os
 import sys
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 from zoneinfo import ZoneInfo
 
 import psycopg2
@@ -48,22 +50,35 @@ class Store:
 
 
 def env_text(name: str, default: str) -> str:
+    """Loe keskkonnamuutuja tekstina.
+
+    Docker Compose annab skriptile `.env` failist väärtused kaasa.
+    Kui väärtust ei ole seatud, kasutame praktikumi jaoks sobivat vaikeväärtust.
+    """
     return os.environ.get(name, default)
 
 
 def env_int(name: str, default: int) -> int:
+    """Loe keskkonnamuutuja täisarvuna."""
     return int(env_text(name, str(default)))
 
 
 def now_local() -> datetime:
+    """Tagasta aeg Tallinna ajavööndis, et logid oleksid õppijale loetavad."""
     return datetime.now(TALLINN_TZ)
 
 
 def log(message: str) -> None:
+    """Kirjuta konteineri logisse ajatempliga teade."""
     print(f"{now_local().isoformat()} | {message}", flush=True)
 
 
 def get_connection():
+    """Ava ühendus PostgreSQL andmebaasi.
+
+    Skript töötab scheduler'i konteineris. Sealt ei kasutata `localhost` aadressi,
+    vaid Docker Compose teenuse nime `db`.
+    """
     return psycopg2.connect(
         host=env_text("DB_HOST", "db"),
         port=env_text("DB_PORT", "5432"),
@@ -73,13 +88,11 @@ def get_connection():
     )
 
 
-def stable_int(seed: str, minimum: int, maximum: int) -> int:
-    span = maximum - minimum + 1
-    value = int(hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12], 16)
-    return minimum + (value % span)
-
-
 def read_products() -> list[Product]:
+    """Loe tootekataloog CSV failist.
+
+    Need read on dimensiooniandmed: nad kirjeldavad toodet, mitte üksikut müüki.
+    """
     with (SOURCE_DATA_DIR / "products.csv").open(encoding="utf-8", newline="") as handle:
         return [
             Product(
@@ -93,6 +106,7 @@ def read_products() -> list[Product]:
 
 
 def read_stores() -> list[Store]:
+    """Loe poodide kataloog CSV failist."""
     with (SOURCE_DATA_DIR / "stores.csv").open(encoding="utf-8", newline="") as handle:
         return [
             Store(
@@ -106,6 +120,11 @@ def read_stores() -> list[Store]:
 
 
 def load_dimensions(conn, products: list[Product], stores: list[Store]) -> None:
+    """Lae tooted ja poed staging kihti.
+
+    `ON CONFLICT` teeb laadimise idempotentseks: sama faili võib uuesti laadida
+    ilma duplikaatridu tekitamata.
+    """
     loaded_at = now_local()
     with conn.cursor() as cur:
         for product in products:
@@ -155,47 +174,50 @@ def load_dimensions(conn, products: list[Product], stores: list[Store]) -> None:
             )
 
 
-def normalize_shop_time(value: datetime) -> datetime:
-    """Hoia simuleeritud sündmused enamasti veebipoe aktiivses päevas."""
-    if value.hour >= 22:
-        next_day = value.date() + timedelta(days=1)
-        return datetime.combine(next_day, time(8, 0), tzinfo=TALLINN_TZ)
-    if value.hour < 8:
-        return datetime.combine(value.date(), time(8, 0), tzinfo=TALLINN_TZ)
-    return value
+def get_source_api_url() -> str:
+    """Tagasta source API aadress scheduler'i konteineri vaates."""
+    return env_text("SOURCE_API_URL", "http://source-api:8019").rstrip("/")
 
 
-def build_order(
-    *,
-    event_sequence: int,
-    event_time: datetime,
-    products: list[Product],
-    stores: list[Store],
-    run_id: uuid.UUID,
-    is_backfill: bool,
-) -> dict:
-    product = products[stable_int(f"product-{event_sequence}", 0, len(products) - 1)]
-    store = stores[stable_int(f"store-{event_sequence}", 0, len(stores) - 1)]
-    quantity = stable_int(f"quantity-{event_sequence}", 1, 5)
-    price_step = Decimal(stable_int(f"price-{event_sequence}", 0, 5)) * Decimal("0.50")
-    unit_price = (product.base_price_eur + price_step).quantize(Decimal("0.01"))
+def fetch_json(path: str, params: dict) -> dict:
+    """Küsi source API-st JSON vastus."""
+    query = urlencode(params)
+    url = f"{get_source_api_url()}{path}?{query}" if query else f"{get_source_api_url()}{path}"
+    with urlopen(url, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
 
-    return {
-        "event_id": f"EVT-{event_sequence:09d}",
-        "event_sequence": event_sequence,
-        "order_id": f"ORD-{event_time.strftime('%Y%m%d')}-{event_sequence:09d}",
-        "event_time": event_time,
-        "processed_at": now_local(),
-        "store_id": store.store_id,
-        "product_id": product.product_id,
-        "quantity": quantity,
-        "unit_price_eur": unit_price,
-        "source_batch_id": str(run_id),
-        "is_backfill": is_backfill,
-    }
+
+def fetch_source_events(*, after_sequence: int, limit: int) -> dict:
+    """Küsi järgmised sündmused pärast etteantud järjekorranumbrit.
+
+    `after_sequence` toimib siin nagu väike offset ehk järjehoidja.
+    `limit` ütleb, mitu sündmust üks mikrobatch kõige rohkem vastu võtab.
+    """
+    return fetch_json(
+        "/api/events",
+        {
+            "after_sequence": after_sequence,
+            "limit": limit,
+        },
+    )
+
+
+def fetch_backfill_state(days: int) -> dict:
+    """Küsi, millise sündmuseni algne ajaloo laadimine jõudma peab."""
+    return fetch_json("/api/backfill-state", {"days": days})
+
+
+def parse_event_time(value: str) -> datetime:
+    """Muuda API-st tulnud ajatekst Pythoni ajatüübiks."""
+    return datetime.fromisoformat(value)
 
 
 def insert_orders(conn, orders: list[dict]) -> int:
+    """Kirjuta müügisündmused staging tabelisse.
+
+    `event_id` on primaarvõti. Kui sama sündmus jõuab skriptini teist korda,
+    jätab `ON CONFLICT DO NOTHING` selle vahele.
+    """
     inserted = 0
     with conn.cursor() as cur:
         for order in orders:
@@ -221,12 +243,12 @@ def insert_orders(conn, orders: list[dict]) -> int:
                     order["event_id"],
                     order["event_sequence"],
                     order["order_id"],
-                    order["event_time"],
-                    order["processed_at"],
+                    parse_event_time(order["event_time"]),
+                    now_local(),
                     order["store_id"],
                     order["product_id"],
                     order["quantity"],
-                    order["unit_price_eur"],
+                    Decimal(str(order["unit_price_eur"])),
                     order["source_batch_id"],
                     order["is_backfill"],
                 ),
@@ -248,6 +270,11 @@ def insert_run_log(
     started_at: datetime,
     finished_at: datetime,
 ) -> None:
+    """Kirjuta töövoo käivituse kokkuvõte logitabelisse.
+
+    Superset loeb seda tabelit dashboardil. Nii näeb õppija veebiliidesest,
+    kas cron töötab ja kui palju ridu viimane mikrobatch lisas.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -279,6 +306,12 @@ def insert_run_log(
 
 
 def initialize_state(conn, *, next_sequence: int, next_event_time: datetime) -> None:
+    """Sea töövoo järjehoidja.
+
+    `control.pipeline_state` ütleb järgmisele cron käivitusele, millisest
+    sündmusest jätkata. `GREATEST` kaitseb selle eest, et järjehoidja ei liiguks
+    kogemata tagasi.
+    """
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -305,46 +338,38 @@ def initialize_state(conn, *, next_sequence: int, next_event_time: datetime) -> 
 
 
 def bootstrap(_args: argparse.Namespace) -> None:
+    """Lae algne ajalugu ja sea scheduler valmis järgmiseks sündmuseks."""
     run_id = uuid.uuid4()
     started_at = now_local()
     products = read_products()
     stores = read_stores()
-    demo_start_date = date.fromisoformat(env_text("DEMO_START_DATE", "2026-04-01"))
     backfill_days = env_int("INITIAL_BACKFILL_DAYS", 14)
-    orders_per_day = env_int("INITIAL_ORDERS_PER_DAY", 80)
-    orders: list[dict] = []
-
-    for day_offset in range(backfill_days):
-        current_date = demo_start_date + timedelta(days=day_offset)
-        for order_no in range(orders_per_day):
-            event_sequence = (day_offset * orders_per_day) + order_no + 1
-            minute_of_day = stable_int(
-                f"{current_date.isoformat()}-{order_no}-minute",
-                8 * 60,
-                21 * 60,
-            )
-            event_time = datetime.combine(
-                current_date,
-                time(minute_of_day // 60, minute_of_day % 60),
-                tzinfo=TALLINN_TZ,
-            )
-            orders.append(
-                build_order(
-                    event_sequence=event_sequence,
-                    event_time=event_time,
-                    products=products,
-                    stores=stores,
-                    run_id=run_id,
-                    is_backfill=True,
-                )
-            )
-
-    next_sequence = (backfill_days * orders_per_day) + 1
-    next_event_time = datetime.combine(
-        demo_start_date + timedelta(days=backfill_days),
-        time(8, 0),
-        tzinfo=TALLINN_TZ,
+    backfill_info = fetch_backfill_state(backfill_days)
+    through_sequence = int(backfill_info["through_sequence"])
+    next_event_time = (
+        parse_event_time(backfill_info["next_event_time"])
+        if backfill_info["next_event_time"]
+        else now_local()
     )
+    source_batch_limit = 500
+    orders: list[dict] = []
+    after_sequence = 0
+
+    # Alglaadimine võib võtta rohkem ridu kui tavaline ühe minuti mikrobatch.
+    # Seepärast küsime ajaloo source API-st suuremate tükkidena.
+    while after_sequence < through_sequence:
+        response = fetch_source_events(
+            after_sequence=after_sequence,
+            limit=min(source_batch_limit, through_sequence - after_sequence),
+        )
+        source_events = response["events"]
+        if not source_events:
+            break
+        for event in source_events:
+            event["source_batch_id"] = str(run_id)
+            event["is_backfill"] = True
+        orders.extend(source_events)
+        after_sequence = int(response["next_after_sequence"])
 
     conn = get_connection()
     try:
@@ -352,7 +377,7 @@ def bootstrap(_args: argparse.Namespace) -> None:
         inserted = insert_orders(conn, orders)
         initialize_state(
             conn,
-            next_sequence=next_sequence,
+            next_sequence=through_sequence + 1,
             next_event_time=next_event_time,
         )
         finished_at = now_local()
@@ -362,8 +387,8 @@ def bootstrap(_args: argparse.Namespace) -> None:
             run_type="bootstrap",
             status="success",
             rows_inserted=inserted,
-            watermark_from=min(order["event_time"] for order in orders),
-            watermark_to=max(order["event_time"] for order in orders),
+            watermark_from=min(parse_event_time(order["event_time"]) for order in orders),
+            watermark_to=max(parse_event_time(order["event_time"]) for order in orders),
             message=f"Alglaadimine valmis: {inserted} uut müügisündmust.",
             started_at=started_at,
             finished_at=finished_at,
@@ -392,17 +417,24 @@ def bootstrap(_args: argparse.Namespace) -> None:
 
 
 def run_scheduled(_args: argparse.Namespace) -> None:
+    """Lisa üks regulaarne mikrobatch.
+
+    Cron käivitab selle funktsiooni iga minuti järel. Partii suurus tuleb
+    `.env` failis olevast `MICROBATCH_SIZE` väärtusest.
+    """
     run_id = uuid.uuid4()
     started_at = now_local()
     products = read_products()
     stores = read_stores()
     batch_size = env_int("MICROBATCH_SIZE", 12)
-    step_minutes = env_int("MICROBATCH_EVENT_STEP_MINUTES", 5)
 
     conn = get_connection()
     try:
         load_dimensions(conn, products, stores)
         with conn.cursor() as cur:
+            # `FOR UPDATE` lukustab järjehoidja rea selle tehingu ajaks.
+            # See on sama mõte nagu ühel töötegijal märkida, millise kaustani ta
+            # jõudis, et teine töö ei alustaks samast kohast.
             cur.execute(
                 """
                 SELECT next_event_sequence, next_event_time
@@ -415,34 +447,53 @@ def run_scheduled(_args: argparse.Namespace) -> None:
             state_row = cur.fetchone()
 
             if state_row is None:
-                fallback_time = datetime.combine(date.today(), time(8, 0), tzinfo=TALLINN_TZ)
-                initialize_state(conn, next_sequence=1, next_event_time=fallback_time)
                 next_sequence = 1
-                next_event_time = fallback_time
+                next_event_time = now_local()
+                initialize_state(conn, next_sequence=next_sequence, next_event_time=next_event_time)
             else:
                 next_sequence = int(state_row[0])
                 next_event_time = state_row[1].astimezone(TALLINN_TZ)
 
-            orders = []
-            current_event_time = normalize_shop_time(next_event_time)
-            for offset in range(batch_size):
-                event_sequence = next_sequence + offset
-                event_time = normalize_shop_time(current_event_time)
-                orders.append(
-                    build_order(
-                        event_sequence=event_sequence,
-                        event_time=event_time,
-                        products=products,
-                        stores=stores,
-                        run_id=run_id,
-                        is_backfill=False,
-                    )
+            # Siin rakendubki mikrobatch'i suurus. Kui allikas pakub rohkem
+            # sündmusi, jäävad need järgmise cron käivituse ootele.
+            response = fetch_source_events(
+                after_sequence=next_sequence - 1,
+                limit=batch_size,
+            )
+            orders = response["events"]
+            for event in orders:
+                event["source_batch_id"] = str(run_id)
+                event["is_backfill"] = False
+
+            if not orders:
+                finished_at = now_local()
+                insert_run_log(
+                    conn,
+                    run_id=run_id,
+                    run_type="scheduled",
+                    status="skipped",
+                    rows_inserted=0,
+                    watermark_from=None,
+                    watermark_to=None,
+                    message="Source API ei tagastanud uusi sündmusi.",
+                    started_at=started_at,
+                    finished_at=finished_at,
                 )
-                current_event_time = normalize_shop_time(
-                    event_time + timedelta(minutes=step_minutes)
-                )
+                conn.commit()
+                log("Cron mikrobatch jättis töö vahele: uusi sündmusi ei olnud.")
+                return
 
             inserted = insert_orders(conn, orders)
+            next_after_sequence = int(response["next_after_sequence"])
+
+            # Järgmise sündmuse aeg aitab dashboardil näidata, kui kaugele
+            # andmeajas järgmine töö võiks liikuda.
+            next_events = fetch_source_events(after_sequence=next_after_sequence, limit=1)["events"]
+            next_event_time = (
+                parse_event_time(next_events[0]["event_time"])
+                if next_events
+                else parse_event_time(orders[-1]["event_time"])
+            )
             cur.execute(
                 """
                 UPDATE control.pipeline_state
@@ -453,8 +504,8 @@ def run_scheduled(_args: argparse.Namespace) -> None:
                 WHERE state_key = %s
                 """,
                 (
-                    next_sequence + batch_size,
-                    current_event_time,
+                    next_after_sequence + 1,
+                    next_event_time,
                     now_local(),
                     STATE_KEY,
                 ),
@@ -467,9 +518,12 @@ def run_scheduled(_args: argparse.Namespace) -> None:
             run_type="scheduled",
             status="success",
             rows_inserted=inserted,
-            watermark_from=orders[0]["event_time"],
-            watermark_to=orders[-1]["event_time"],
-            message=f"Cron lisas {inserted} uut müügisündmust.",
+            watermark_from=parse_event_time(orders[0]["event_time"]),
+            watermark_to=parse_event_time(orders[-1]["event_time"]),
+            message=(
+                f"Cron laadis source API-st {inserted} sündmust. "
+                f"Batch'i piirang oli {batch_size}."
+            ),
             started_at=started_at,
             finished_at=finished_at,
         )
@@ -497,6 +551,7 @@ def run_scheduled(_args: argparse.Namespace) -> None:
 
 
 def check(_args: argparse.Namespace) -> None:
+    """Prindi kiire käsurea kontroll, kui on vaja andmebaasi seisu vaadata."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:

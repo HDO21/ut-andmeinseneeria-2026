@@ -1,3 +1,11 @@
+"""Paki Superseti starter-dashboard imporditavaks ZIP-failiks.
+
+Superset oskab dashboarde importida ZIP-failist. Praktikumi failides hoiame
+YAML kirjeldused lahti, sest nii on neid lihtsam repos lugeda ja muuta.
+See skript asendab enne pakkimist andmebaasiühenduse kohatäitjad `.env`
+väärtustega.
+"""
+
 from __future__ import annotations
 
 import os
@@ -16,12 +24,14 @@ PLACEHOLDERS = {
 
 
 def render(text: str) -> str:
+    """Asenda YAML failides olevad kohatäitjad tegelike väärtustega."""
     for placeholder, value in PLACEHOLDERS.items():
         text = text.replace(placeholder, value)
     return text
 
 
 def main(argv: list[str]) -> None:
+    """Loo ZIP-fail Superseti `import-dashboards` käsu jaoks."""
     if len(argv) != 2:
         raise SystemExit("Kasutus: python zip_dashboard.py <source_dir> <target_zip>")
 

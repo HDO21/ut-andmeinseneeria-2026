@@ -1,8 +1,27 @@
+-- 9. praktikumi andmebaasi objektid.
+--
+-- Superset kasutab sama PostgreSQL serverit oma metaandmete jaoks `public`
+-- skeemis. Praktikumi andmed hoiame eraldi skeemides, et õppeandmed ja
+-- tööriista sisetabelid ei läheks segamini.
+
+-- `staging` on maandumiskiht. Siia jõuavad andmed võimalikult allikalähedasel
+-- kujul.
 CREATE SCHEMA IF NOT EXISTS staging;
+
+-- `intermediate` on vahekiht, kus sündmused seotakse kirjeldavate tunnustega.
+CREATE SCHEMA IF NOT EXISTS intermediate;
+
+-- `analytics` sisaldab Supersetile mõeldud analüütilisi vaateid.
 CREATE SCHEMA IF NOT EXISTS analytics;
+
+-- `monitoring` sisaldab töövoo logi, mida näitame samuti Supersetis.
 CREATE SCHEMA IF NOT EXISTS monitoring;
+
+-- `control` hoiab töövoo järjehoidjat ehk infot, kust järgmine mikrobatch jätkab.
 CREATE SCHEMA IF NOT EXISTS control;
 
+-- Toodete ja poodide tabelid on dimensiooniandmed.
+-- Need kirjeldavad, mida ja kus müüdi.
 CREATE TABLE IF NOT EXISTS staging.products_raw (
     product_id TEXT PRIMARY KEY,
     product_name TEXT NOT NULL,
@@ -19,6 +38,8 @@ CREATE TABLE IF NOT EXISTS staging.stores_raw (
     loaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Müügisündmuste tabel on faktitabeli algne kiht.
+-- Iga rida tähendab ühte sünteetilist tellimust.
 CREATE TABLE IF NOT EXISTS staging.order_events (
     event_id TEXT PRIMARY KEY,
     event_sequence BIGINT UNIQUE NOT NULL,
@@ -33,12 +54,15 @@ CREATE TABLE IF NOT EXISTS staging.order_events (
     is_backfill BOOLEAN NOT NULL DEFAULT false
 );
 
+-- Indeksid aitavad Supersetil ajas ja toote/poe lõikes kiiremini pärida.
 CREATE INDEX IF NOT EXISTS idx_order_events_event_time
     ON staging.order_events (event_time);
 
 CREATE INDEX IF NOT EXISTS idx_order_events_store_product
     ON staging.order_events (store_id, product_id);
 
+-- Iga mikrobatch kirjutab siia ühe rea.
+-- Dashboardi logitabel loeb andmeid sellest tabelist.
 CREATE TABLE IF NOT EXISTS monitoring.microbatch_run_log (
     id BIGSERIAL PRIMARY KEY,
     run_id UUID NOT NULL,
@@ -54,6 +78,8 @@ CREATE TABLE IF NOT EXISTS monitoring.microbatch_run_log (
         CHECK (status IN ('success', 'error', 'skipped'))
 );
 
+-- Töövoo järjehoidja. Kui cron järgmine kord käivitub, loeb ta siit, millise
+-- event_sequence väärtusega jätkata.
 CREATE TABLE IF NOT EXISTS control.pipeline_state (
     state_key TEXT PRIMARY KEY,
     next_event_sequence BIGINT NOT NULL,
@@ -61,7 +87,8 @@ CREATE TABLE IF NOT EXISTS control.pipeline_state (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE OR REPLACE VIEW analytics.v_sales_events AS
+-- Rikastatud sündmuste vaade seob tellimuse toote ja poe andmetega.
+CREATE OR REPLACE VIEW intermediate.v_sales_events_enriched AS
 SELECT
     e.event_id,
     e.event_sequence,
@@ -87,6 +114,12 @@ LEFT JOIN staging.stores_raw AS s
 LEFT JOIN staging.products_raw AS p
     ON e.product_id = p.product_id;
 
+-- See vaade on Supersetis olemas juhul, kui õppija tahab uurida üksiksündmusi.
+CREATE OR REPLACE VIEW analytics.v_sales_events AS
+SELECT *
+FROM intermediate.v_sales_events_enriched;
+
+-- Päeva, poe, piirkonna ja kategooria koond. Seda kasutatakse trendijoonisel.
 CREATE OR REPLACE VIEW analytics.v_sales_daily AS
 SELECT
     sales_date,
@@ -107,6 +140,7 @@ GROUP BY
     region,
     category;
 
+-- Kategooriate koond. Seda kasutatakse tulpdiagrammi jaoks.
 CREATE OR REPLACE VIEW analytics.v_sales_by_category AS
 SELECT
     sales_date,
@@ -121,6 +155,7 @@ GROUP BY
     sales_date,
     category;
 
+-- Piirkondade koond valikulise lisaharjutuse jaoks.
 CREATE OR REPLACE VIEW analytics.v_sales_by_region AS
 SELECT
     sales_date,
@@ -135,9 +170,12 @@ GROUP BY
     sales_date,
     region;
 
+-- Päevatasemeline KPI vaade starter-dashboardi jaoks.
+-- See sisaldab `sales_date` veergu, et Superseti ajafilter saaks KPI-d ja
+-- teisi müügijooniseid sama kuupäeva alusel filtreerida.
 CREATE OR REPLACE VIEW analytics.v_dashboard_kpi AS
 SELECT
-    1::INTEGER AS row_id,
+    sales_date,
     COUNT(DISTINCT order_id)::INTEGER AS total_orders,
     COALESCE(SUM(quantity), 0)::INTEGER AS total_quantity,
     COALESCE(ROUND(SUM(total_amount_eur), 2), 0)::NUMERIC(14, 2) AS total_revenue_eur,
@@ -145,8 +183,10 @@ SELECT
     MIN(event_time) AS first_event_time,
     MAX(event_time) AS last_event_time,
     MAX(processed_at) AS last_processed_at
-FROM analytics.v_sales_events;
+FROM analytics.v_sales_events
+GROUP BY sales_date;
 
+-- Viimased töövoo käivitused. Supersetis on sellest starter-dashboardi tabel.
 CREATE OR REPLACE VIEW monitoring.v_recent_microbatch_runs AS
 SELECT
     id,

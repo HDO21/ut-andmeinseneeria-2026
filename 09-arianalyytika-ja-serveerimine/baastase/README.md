@@ -33,7 +33,7 @@
 
 Selle praktikumi eesmärk on koostada Apache Supersetis väike veebipoe müügi dashboard.
 
-Tehniline taust käivitub `docker compose` abil. PostgreSQL hoiab andmeid, cron lisab iga minuti järel väikese mikrobatch'i uusi müügisündmusi ja Superset näitab tulemusi veebiliideses.
+Tehniline taust käivitub `docker compose` abil. Kohalik `source-api` simuleerib veebipoe müügisündmuste allikat, PostgreSQL hoiab andmeid, cron laadib iga minuti järel väikese mikrobatch'i ja Superset näitab tulemusi veebiliideses.
 
 Praktikumi põhirõhk on Supersetis:
 
@@ -110,15 +110,28 @@ Selle praktikumi jaoks sobib hästi järgmine tööviis:
 
 Host tähendab sinu arvutit või Codespace'i tööruumi. Konteiner tähendab Dockeri sees töötavat teenust.
 
+Kui kasutad Windowsit, vali üks terminal ja püsi selles kogu praktikumi vältel.
+Soovitatud valik on `PowerShell` või `Git Bash`. Juhendis on eraldi märgitud
+need kohad, kus PowerShelli käsk erineb Linuxi või macOS-i käsust.
+
+Sa ei pea Windowsis käsitsi käivitama ühtegi `.sh` faili. Need failid töötavad
+Linuxi konteineri sees ja Docker käivitab need ise.
+
+Kui kasutad GitHub Codespacesit, ava Superset brauseris Codespacesi **Ports**
+vaate kaudu. Aadress võib siis olla teistsugune kui `localhost`, kuid port on
+ikka sama, näiteks `8088`.
+
 ### Teenused
 
 Selles praktikumis käivitub viis põhilist teenust:
 
 - `db` on PostgreSQL andmebaas;
+- `source-api` on kohalik veebipoe sündmuste allikas;
 - `bootstrap` loob algse müügiajaloo ja lõpetab töö;
-- `scheduler` hoiab cron'i käimas ja lisab iga minuti järel uusi müügisündmusi;
-- `superset-db` hoiab Superseti enda metaandmeid;
+- `scheduler` hoiab cron'i käimas ja laadib source API-st iga minuti järel järgmise mikrobatch'i;
 - `superset` on veebirakendus, kus lood joonised ja dashboardi.
+
+Superseti metaandmed hoitakse samas `db` konteineris ja samas `praktikum` andmebaasis. Need tekivad PostgreSQL-i `public` skeemi. Praktikumi andmed on eraldi skeemides `staging`, `intermediate`, `analytics`, `monitoring` ja `control`, seega õppija tööpind jääb selgelt eristatavaks.
 
 Lisaks jooksevad korraks `superset-init` ja `superset-import`. Need seadistavad Superseti ja impordivad starter-dashboardi.
 
@@ -127,6 +140,7 @@ Lisaks jooksevad korraks `superset-init` ja `superset-import`. Need seadistavad 
 See praktikum kasutab vaikimisi porte:
 
 - PostgreSQL hostis: `5439`;
+- source API hostis: `8019`;
 - Superset hostis: `8088`.
 
 Kui port `8088` on juba kasutusel, muuda `.env` failis väärtust:
@@ -134,6 +148,17 @@ Kui port `8088` on juba kasutusel, muuda `.env` failis väärtust:
 ```text
 SUPERSET_PORT_HOST=8089
 ```
+
+Kui port `8019` on juba kasutusel, muuda samas failis väärtust:
+
+```text
+SOURCE_API_PORT_HOST=8020
+```
+
+Vaikimisi andmeaken on seatud 14.05.2026 praktikumi järgi. Source API alustab
+kuupäevast `2026-04-30` ja alglaadimine võtab 14 päeva ajalugu. See tähendab,
+et starter-dashboardil on kohe näha vahemik 30.04-13.05 ning cron hakkab
+lisama 14.05 müügisündmusi.
 
 Kui oled praktikumit varem käivitanud ja tahad täiesti puhast algust, kasuta juhendi lõpus olevat `docker compose down -v` käsku.
 
@@ -147,9 +172,10 @@ Kõik allpool toodud suhtelised failiteed eeldavad, et asud kaustas `09-arianaly
 - [`Dockerfile.scheduler`](./Dockerfile.scheduler) ehitab cron'i ja Pythoni skriptiga konteineri
 - [`Dockerfile.superset`](./Dockerfile.superset) lisab Superseti konteinerisse PostgreSQL draiveri
 - [`init/01_create_objects.sql`](./init/01_create_objects.sql) loob tabelid, vaated ja logitabeli
+- [`source_api/server.py`](./source_api/server.py) käivitab kohaliku veebipoe sündmuste API
 - [`source_data/products.csv`](./source_data/products.csv) sisaldab veebipoe tooteid
 - [`source_data/stores.csv`](./source_data/stores.csv) sisaldab veebipoe poode
-- [`scripts/microbatch.py`](./scripts/microbatch.py) loob algse ajaloo ja lisab uusi müügisündmusi
+- [`scripts/microbatch.py`](./scripts/microbatch.py) toob source API-st sündmused ja laadib need andmebaasi
 - [`scripts/01_check_data.sql`](./scripts/01_check_data.sql) sisaldab kontrollpäringuid
 - [`scheduler/crontab`](./scheduler/crontab) käivitab mikrobatch'i iga minuti järel
 - [`scheduler/entrypoint.sh`](./scheduler/entrypoint.sh) paneb cron'i tööle ja käivitab esimese mikrobatch'i kohe
@@ -218,7 +244,11 @@ Mikrobatch on väike ports andmeid, mida töödeldakse regulaarselt.
 
 Näide:
 
-Selles praktikumis lisab cron iga minuti järel 12 uut veebipoe müügisündmust.
+Selles praktikumis küsib cron iga minuti järel source API-st kuni 12 järgmist veebipoe müügisündmust. See piir ei ütle, mitu sündmust allikas tekkis. See ütleb, mitu sündmust ETL ühe käivitusega vastu võtab.
+
+Kui allikas on rohkem kui 12 uut sündmust, jäävad ülejäänud järgmise käivituse ootele. See on tavaline mikrobatch-muster: laadijal on partii suurus, allikal võib olla sellest suurem maht.
+
+See on mikrobatch'i õppemudel, mitte tootmisvalmis voogedastusplatvorm. Päris süsteemis võib sama rolli täita Kafka offset, CDC logipositsioon, Airflow metadata, Kubernetes CronJob või mõni muu orkestreerija. Siin hoiame mustri väikese ja nähtavana: source API annab järjestatud sündmused, `scheduler` loeb neid portsjonite kaupa ja `control.pipeline_state` jätab meelde järgmise sündmuse järjekorranumbri.
 
 ### Andmeaken ja watermark
 
@@ -228,7 +258,7 @@ Andmeaken kirjeldab selle laadimise sündmuste ajavahemikku. `Watermark` on tehn
 
 Näide:
 
-Kui logis on `watermark_from = 2026-04-15 08:00` ja `watermark_to = 2026-04-15 08:55`, siis lisas viimane mikrobatch selle ajavahemiku sündmused.
+Kui logis on `watermark_from = 2026-05-14 08:00` ja `watermark_to = 2026-05-14 08:55`, siis lisas viimane mikrobatch selle ajavahemiku sündmused.
 
 ### Andmelugu
 
@@ -258,6 +288,8 @@ Tee see käsk hosti terminalis.
 ```bash
 cd 09-arianalyytika-ja-serveerimine/baastase
 ```
+
+Kui kasutad Windows PowerShelli, töötab sama käsk samal kujul.
 
 Kui töötad GitHub Codespacesis, võib täielik tee olla:
 
@@ -289,13 +321,15 @@ Tee see käsk hosti terminalis.
 docker compose up -d --build
 ```
 
+Sama käsk töötab macOS-is, Linuxis, Git Bashis, Windows PowerShellis ja GitHub Codespacesis, kui Docker töötab.
+
 See teeb mitu asja:
 
 - ehitab scheduler'i ja Superseti konteinerid;
 - loob PostgreSQL andmebaasi;
 - loob tabelid ja vaated;
 - laeb algse veebipoe müügiajaloo;
-- käivitab cron'i, mis lisab uusi sündmusi;
+- käivitab cron'i, mis laadib source API-st järgmisi sündmusi;
 - seadistab Superseti;
 - impordib starter-dashboardi.
 
@@ -311,9 +345,15 @@ docker compose ps
 
 Oodatav tulemus:
 
-- `db`, `scheduler`, `superset-db` ja `superset` on olekus `running` või `healthy`;
+- `db`, `source-api`, `scheduler` ja `superset` on olekus `running` või `healthy`;
 - `bootstrap`, `superset-init` ja `superset-import` on töö lõpetanud;
 - `bootstrap`, `superset-init` ja `superset-import` võivad olla olekus `exited (0)`. See on korras, sest need on ühekordsed seadistustööd.
+
+`superset` käivitub alles pärast `superset-import` edukat lõppu. Kui Superset ei avane või dashboardi ei ole, vaata kõigepealt `superset-import` logi:
+
+```bash
+docker compose logs superset-import
+```
 
 Kui tahad andmebaasi seisu käsurealt kontrollida, tee:
 
@@ -366,7 +406,7 @@ Vaata tabelit `Viimased laadimised`.
 Oodatav tulemus:
 
 - iga umbes minuti järel ilmub uus `scheduled` rida;
-- `rows_inserted` näitab, mitu müügisündmust lisati;
+- `rows_inserted` näitab, mitu müügisündmust selles mikrobatch'is andmebaasi laaditi;
 - `watermark_from` ja `watermark_to` näitavad, millise andmeaja sündmused jõudsid viimasesse laadimisse;
 - KPI `Kogukäive` kasvab aja jooksul.
 
@@ -377,6 +417,21 @@ Kui tabel ei muutu kohe, oota kuni järgmise täisminutini. Cron käivitub minut
 Nüüd lood esimese uue joonise. See vastab küsimusele:
 
 > Kuidas müük ajas muutub?
+
+Superset võib veeruvalikus näidata kas tehnilist andmebaasinime või eestikeelset
+pealkirja. Mõlemad viitavad samale veerule.
+
+| Andmebaasi veerg | Superseti pealkiri |
+|------------------|--------------------|
+| `sales_date` | `Müügikuupäev` |
+| `gross_sales_eur` | `Käive` |
+| `region` | `Piirkond` |
+| `category` | `Kategooria` |
+| `order_count` | `Tellimuste arv` |
+| `avg_order_eur` | `Keskmine ostukorv` |
+
+SQL-is kasutatakse vasakpoolseid nimesid. Superseti rippmenüüs võid näha
+parempoolseid pealkirju.
 
 Tee sammud Superseti veebiliideses.
 
@@ -399,10 +454,14 @@ Line Chart
 
 | Väli | Väärtus |
 |------|---------|
-| X-axis | `sales_date` |
-| Metrics | `SUM(gross_sales_eur)` |
-| Dimensions või Series | `region` |
+| X-axis | `sales_date` ehk `Müügikuupäev` |
+| Metrics | `SUM(gross_sales_eur)` ehk `SUM(Käive)` |
+| Dimensions või Series | `region` ehk `Piirkond` |
 | Time range | `No filter` |
+
+Kui Superset ei paku valmis mõõdikut `SUM(gross_sales_eur)`, loo see samal
+Metrics väljal: vali veerg `gross_sales_eur` ehk `Käive` ja koondamisviisiks
+`SUM`.
 
 7. Vajuta **Run**.
 8. Salvesta joonis nimega:
@@ -444,11 +503,14 @@ Bar Chart
 
 | Väli | Väärtus |
 |------|---------|
-| X-axis | `category` |
-| Metrics | `SUM(gross_sales_eur)` |
-| Sort by | `SUM(gross_sales_eur)` |
+| X-axis | `category` ehk `Kategooria` |
+| Metrics | `SUM(gross_sales_eur)` ehk `SUM(Käive)` |
+| Sort by | sama mõõdik: `SUM(gross_sales_eur)` ehk `SUM(Käive)` |
 | Sort descending | sees |
 | Time range | `No filter` |
+
+Kui Superset kuvab veerud eesti keeles, vali `Kategooria` ja `Käive`. Kui ta
+kuvab tehnilised nimed, vali `category` ja `gross_sales_eur`.
 
 7. Vajuta **Run**.
 8. Salvesta joonis nimega:
@@ -521,20 +583,55 @@ Tee sammud Superseti veebiliideses.
 1. Ava dashboard redigeerimisvaates.
 2. Ava filtrite seadistus.
 3. Lisa filter tüübiga **Time range** või **Date range**.
-4. Seo filter veeruga:
+4. Pane filtri nimeks:
 
 ```text
-sales_date
+Müügikuupäev
 ```
 
-5. Rakenda filter loodud müügijoonistele.
-6. Salvesta dashboard.
+5. Ava filtri ulatus ehk **Scoping** või **Apply to panels**.
+6. Rakenda filter KPI-le `Kogukäive` ja loodud müügijoonistele.
+7. Ära rakenda seda filtrit logitabelile `Viimased laadimised`.
+   Logitabel näitab töövoo käivitusaega, mitte müügikuupäeva.
+8. Salvesta filter ja seejärel dashboard.
+
+`Time range` filter ei küsi tavaliselt eraldi veergu. Ta kasutab iga charti
+enda ajaveergu. Praktikumi müügi-datasetites on selleks `sales_date`, mida
+Superset võib näidata pealkirjaga `Müügikuupäev`.
+
+Oluline on eristada kahte seadistust:
+
+- charti või dataseti ajaveerg ütleb, millist kuupäevavälja filter kasutab;
+- filtri ulatus ütleb, millistele chartidele filter rakendub.
+
+Kui KPI chart ei ole filtri ulatuses, siis KPI ei muutu isegi siis, kui tema
+datasetis on `sales_date` olemas. Kui KPI datasetis on ajaveeruks jäänud
+`last_processed_at`, siis filter kasutab töötlusaega, mitte müügikuupäeva.
+
+Kontrolli vajadusel datasetite seadistust:
+
+| Dataset | Ajaveerg |
+|---------|----------|
+| `v_dashboard_kpi` | `sales_date` ehk `Müügikuupäev` |
+| `v_sales_daily` | `sales_date` ehk `Müügikuupäev` |
+| `v_sales_by_category` | `sales_date` ehk `Müügikuupäev` |
+
+Ära seo seda filtrit datasetiga `v_recent_microbatch_runs`. Selle logitabeli
+ajaveerud on `finished_at`, `started_at`, `watermark_from` ja `watermark_to`,
+aga need ei tähenda sama asja kui müügikuupäev.
 
 Oodatav tulemus:
 
-Dashboardi kasutaja saab valida ajavahemiku ja vaadata, kuidas trend ning kategooriate võrdlus muutuvad.
+Dashboardi kasutaja saab valida ajavahemiku ja vaadata, kuidas KPI, trend ning kategooriate võrdlus muutuvad.
 
 Kui filter ei rakendu kõigile joonistele, kontrolli, kas joonised kasutavad datasette, kus on olemas veerg `sales_date`.
+Superset võib sama veergu näidata nimega `Müügikuupäev`.
+
+Kui KPI ei muutu, ava filtri seadistus uuesti ja kontrolli, et `Kogukäive KPI`
+on filtri ulatuses. Vaata ka, et dashboard on pärast filtri muutmist salvestatud.
+Kui stack oli enne KPI parandust juba käivitatud, võib Superseti metaandmetes
+olla alles vana KPI dataset. Sel juhul tee puhas algus käsuga `docker compose down -v`
+ja käivita stack uuesti.
 
 ## 12. Sõnasta mõõdiku piirangud
 
@@ -599,7 +696,7 @@ Superset töötab, kuid `Veebipoe müügi ülevaade` puudub.
 
 Tõenäoline põhjus:
 
-`superset-import` teenus ei lõpetanud edukalt.
+`superset-import` teenus ei lõpetanud edukalt või käivitati varem vana tühja Superseti andmemahu pealt.
 
 Lahendus:
 
@@ -610,6 +707,50 @@ docker compose logs superset-import
 ```
 
 Kui seal on andmebaasiühenduse viga, kontrolli, kas `.env` failis olevad PostgreSQL väärtused on samad, millega stack käivitati.
+
+Kui oled selle praktikumi stacki juba varem käivitanud, tee puhas algus:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+### `superset-import` lõpeb veaga
+
+Sümptom:
+
+```text
+Container praktikum-supersetimport-09-base Error
+service "superset-import" didn't complete successfully: exit 1
+```
+
+Tõenäoline põhjus:
+
+Superseti starter-dashboardi import ei õnnestunud. Docker näitab siin ainult
+üldist veateadet. Täpsem põhjus on `superset-import` konteineri logis.
+
+Lahendus:
+
+Vaata importija logi:
+
+```bash
+docker compose logs --no-color superset-import
+```
+
+Kui oled praktikumi faile muutnud või uuendanud, eemalda ebaõnnestunud
+importija konteiner ja käivita Superset uuesti:
+
+```bash
+docker compose rm -f superset-import superset
+docker compose up -d --build superset
+```
+
+Kui viga kordub ja tahad alustada täiesti puhtalt, kasuta:
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
 
 ### Dashboard ei värskene
 
@@ -639,6 +780,40 @@ Vaata ka hosti logifaili:
 
 ```bash
 tail -n 30 logs/pipeline.log
+```
+
+Kui töötad Windows PowerShellis ja `tail` ei tööta, kasuta:
+
+```powershell
+Get-Content logs/pipeline.log -Tail 30
+```
+
+### Scheduler ei käivitu Windowsis pärast faili muutmist
+
+Sümptom:
+
+```text
+/entrypoint.sh: not found
+```
+
+või:
+
+```text
+bad interpreter
+```
+
+Tõenäoline põhjus:
+
+Shelli skript salvestati Windowsi `CRLF` reavahetustega. Linuxi konteiner ootab
+`LF` reavahetusi.
+
+Lahendus:
+
+Ava `scheduler/entrypoint.sh` VS Code'is. Akna alumises paremas servas vali
+reavahetuseks `LF` ja salvesta fail. Seejärel käivita stack uuesti:
+
+```bash
+docker compose up -d --build
 ```
 
 ### Joonis ei näita andmeid
@@ -688,7 +863,7 @@ Selles praktikumis ehitasid Supersetis väikese veebipoe dashboardi.
 Tehniline taust tegi kolm asja:
 
 - lõi sünteetilise müügiajaloo;
-- lisas cron'i abil uusi müügisündmusi;
+- laadis cron'i abil source API-st uusi müügisündmusi;
 - tegi andmete värskuse logi Supersetis nähtavaks.
 
 Sisuline töö oli dashboardi koostamine:
@@ -706,6 +881,8 @@ Vali üks lisaülesanne.
 
 1. Lisa kolmas joonis piirkondade võrdluseks datasetist `v_sales_by_region`.
 2. Lisa teine KPI: keskmine ostukorv datasetist `v_dashboard_kpi`.
+   Kasuta arvutust `SUM(total_revenue_eur) / SUM(total_orders)`, et ajafiltri
+   korral oleks tulemus kogu valitud perioodi keskmine.
 3. Muuda Markdown-plokk konkreetsemaks: kirjuta üks soovitus ja üks kontrollküsimus.
 4. Ava **SQL Lab** ja uuri päringuga, milline kategooria annab suurima käibe.
 

@@ -8,10 +8,11 @@ params:
   viz_type: big_number_total
   metric:
     expressionType: SQL
-    sqlExpression: MAX(total_revenue_eur)
+    sqlExpression: SUM(total_revenue_eur)
     label: Kogukäive
-    optionName: metric_total_revenue_eur
+    optionName: metric_sum_total_revenue_eur
   adhoc_filters: []
+  time_range: No filter
   header_font_size: 0.35
   subtitle_font_size: 0.15
   metric_name_font_size: 0.15
@@ -20,7 +21,7 @@ params:
   extra_form_data: {}
   dashboards: []
 query_context: >-
-  {"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"MAX(total_revenue_eur)","label":"Kogukäive","optionName":"metric_total_revenue_eur"}],"annotation_layers":[],"series_limit":0,"row_limit":10000,"group_others_when_limit_reached":false,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{}}],"form_data":{"datasource":"1__table","viz_type":"big_number_total","metric":{"expressionType":"SQL","sqlExpression":"MAX(total_revenue_eur)","label":"Kogukäive","optionName":"metric_total_revenue_eur"},"adhoc_filters":[],"header_font_size":0.35,"subtitle_font_size":0.15,"metric_name_font_size":0.15,"y_axis_format":",.2f","time_format":"smart_date","extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}
+  {"datasource":{"id":1,"type":"table"},"force":false,"queries":[{"filters":[],"extras":{"having":"","where":""},"applied_time_extras":{},"columns":[],"metrics":[{"expressionType":"SQL","sqlExpression":"SUM(total_revenue_eur)","label":"Kogukäive","optionName":"metric_sum_total_revenue_eur"}],"annotation_layers":[],"series_limit":0,"row_limit":10000,"group_others_when_limit_reached":false,"order_desc":true,"url_params":{},"custom_params":{},"custom_form_data":{},"time_range":"No filter"}],"form_data":{"datasource":"1__table","viz_type":"big_number_total","metric":{"expressionType":"SQL","sqlExpression":"SUM(total_revenue_eur)","label":"Kogukäive","optionName":"metric_sum_total_revenue_eur"},"adhoc_filters":[],"time_range":"No filter","header_font_size":0.35,"subtitle_font_size":0.15,"metric_name_font_size":0.15,"y_axis_format":",.2f","time_format":"smart_date","extra_form_data":{},"dashboards":[],"force":false,"result_format":"json","result_type":"full"},"result_format":"json","result_type":"full"}
 cache_timeout: 5
 uuid: aaaaaaaa-aaaa-4aaa-8aaa-000000000001
 version: 1.0.0
