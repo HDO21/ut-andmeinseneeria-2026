@@ -31,9 +31,11 @@
 
 ## Praktikumi eesmärk
 
-Selle praktikumi eesmärk on koostada Apache Supersetis väike veebipoe müügi dashboard.
+Selle praktikumi eesmärk on koostada Apache Supersetis väike veebipoe müügi dashboard ehk näidikulaud.
 
-Tehniline taust käivitub `docker compose` abil. Kohalik `source-api` simuleerib veebipoe müügisündmuste allikat, PostgreSQL hoiab andmeid, cron laadib iga minuti järel väikese mikrobatch'i ja Superset näitab tulemusi veebiliideses.
+Juhendis kasutame Superseti veebiliidese järgi sõna `dashboard`, sest sama sõna näed ka menüüdes.
+
+Tehniline taust käivitub `docker compose` abil. Kohalik `source-api` simuleerib veebipoe müügisündmuste allikat, PostgreSQL hoiab andmeid, `cron` ehk ajastaja laadib iga minuti järel väikese andmeportsjoni ehk mikrobatch'i ja Superset näitab tulemusi veebiliideses.
 
 Praktikumi põhirõhk on Supersetis:
 
@@ -45,7 +47,7 @@ Praktikumi põhirõhk on Supersetis:
 
 Äriküsimus on:
 
-> Millised veebipoe müügitulemused vajavad juhtkonna tähelepanu?
+> Millistes tootekategooriates ja piirkondades peaks juhtkond valitud perioodi müügitulemusi lähemalt uurima?
 
 ## Õpiväljundid
 
@@ -55,9 +57,9 @@ Praktikumi lõpuks oskad:
 - avada Apache Superseti ja leida ettevalmistatud andmekogumid;
 - lugeda dashboardilt andmete värskuse infot;
 - luua Supersetis vähemalt kaks joonist;
-- ühendada KPI, trendijoonis, võrdlusjoonis ja töövoo logi üheks dashboardiks;
-- lisada dashboardile lühikese Markdown-teksti;
-- sõnastada, mida valitud KPI näitab ja mida see ei näita.
+- ühendada KPI ehk võtmenäitaja, trendijoonis, võrdlusjoonis ja töövoo logi üheks dashboardiks;
+- lisada dashboardile lühikese Markdown-teksti ehk vormindatava tekstiploki;
+- sõnastada, mida valitud võtmenäitaja näitab ja mida see ei näita.
 
 ## Hinnanguline ajakulu
 
@@ -143,7 +145,7 @@ Selles praktikumis käivitub viis põhilist teenust:
 - `scheduler` hoiab cron'i käimas ja laadib source API-st iga minuti järel järgmise mikrobatch'i;
 - `superset` on veebirakendus, kus lood joonised ja dashboardi.
 
-Superseti metaandmed hoitakse samas `db` konteineris ja samas `praktikum` andmebaasis. Need tekivad PostgreSQL-i `public` skeemi. Praktikumi andmed on eraldi skeemides `staging`, `intermediate`, `analytics`, `monitoring` ja `control`, seega õppija tööpind jääb selgelt eristatavaks.
+Superseti metaandmed hoitakse samas `db` konteineris ja samas `praktikum` andmebaasis. Need tekivad PostgreSQL-i `public` skeemi. Praktikumi müügi- ja logiandmed on eraldi skeemides `staging`, `intermediate`, `analytics`, `monitoring` ja `control`. Nii on sul lihtsam eristada Superseti sisetabeleid ja praktikumi andmeid.
 
 Lisaks jooksevad korraks `superset-init` ja `superset-import`. Need seadistavad Superseti ja impordivad starter-dashboardi.
 
@@ -214,7 +216,7 @@ Andmeinseneri töö ei lõpe sellega, et andmed on tabelis.
 
 Kui andmeid kasutab juht, analüütik või valdkonna spetsialist, peab tulemus aitama otsustada. Selle jaoks on vaja:
 
-- selgeid KPI-sid;
+- selgeid võtmenäitajaid ehk KPI-sid;
 - arusaadavaid jooniseid;
 - nähtavat andmete värskust;
 - ausat piiri selle kohta, mida andmed näitavad ja mida mitte.
@@ -277,7 +279,7 @@ Source API annab ainult need sündmused, mille sündmuse aeg on praktikumi
 kohaliku aja järgi kätte jõudnud. Nii ei ilmu dashboardile tellimusi, mis
 peaksid toimuma alles hiljem.
 
-See on mikrobatch'i õppemudel, mitte tootmisvalmis voogedastusplatvorm. Päris süsteemis võib sama rolli täita Kafka offset, CDC logipositsioon, Airflow metadata, Kubernetes CronJob või mõni muu orkestreerija. Siin hoiame mustri väikese ja nähtavana: source API annab järjestatud sündmused, `scheduler` loeb neid portsjonite kaupa ja `control.pipeline_state` jätab meelde järgmise sündmuse järjekorranumbri.
+See on mikrobatch'i õppemudel, mitte tootmisvalmis voogedastusplatvorm. Tööelus võib sama rolli täita Kafka offset, CDC logipositsioon, Airflow metadata, Kubernetes CronJob või mõni muu orkestreerija. Siin hoiame mustri väikese ja nähtavana: source API annab järjestatud sündmused, `scheduler` loeb neid portsjonite kaupa ja `control.pipeline_state` jätab meelde järgmise sündmuse järjekorranumbri.
 
 ### Andmeaken ja watermark
 
@@ -375,7 +377,7 @@ See teeb mitu asja:
 - seadistab Superseti;
 - impordib starter-dashboardi.
 
-Esimene käivitus võib võtta mitu minutit. Superset on üsna suur rakendus.
+Esimene käivitus võib võtta mitu minutit, sest Superseti konteiner ehitatakse ja käivitatakse esimest korda.
 
 ## 4. Kontrolli, et tehniline taust töötab
 
@@ -441,7 +443,7 @@ Starter-dashboardil peaks olema:
 - KPI `Kogukäive`;
 - tabel `Viimased laadimised`.
 
-Need kaks plokki on meelega lihtsad. Nende eesmärk on kinnitada, et andmed ja Superset töötavad.
+Starter-dashboardis on esialgu ainult kaks plokki. Need kinnitavad, et andmed ja Superset töötavad.
 
 ## 6. Vaata, kuidas andmete värskendus töötab
 
@@ -493,7 +495,7 @@ Tee sammud Superseti veebiliideses.
 
 1. Ava **Charts**.
 2. Vajuta **+ Chart**.
-3. Vali dataset:
+3. Vali dataset ehk Superseti andmekogum:
 
 ```text
 v_sales_daily
@@ -618,6 +620,8 @@ Hea dashboard aitab silmal liikuda üldiselt detailsemale:
 
 Nüüd lisa dashboardile lühike tekstiplokk. See aitab joonised äriküsimusega siduda.
 
+Markdown on tekstivorming, kus pealkirjad ja loendid kirjutatakse otse teksti sisse. Superset oskab selle tekstina sisestatud ploki dashboardil vormindatult näidata.
+
 Tee sammud Superseti veebiliideses.
 
 1. Ava sama dashboard redigeerimisvaates.
@@ -627,7 +631,7 @@ Tee sammud Superseti veebiliideses.
 Võid kasutada seda malli:
 
 ```markdown
-### Mida juhtkond peaks märkama?
+### Mida juhtkond peaks lähemalt uurima?
 
 - Peamine muutus:
 - Kõige tugevam kategooria või piirkond:
@@ -639,7 +643,7 @@ Võid kasutada seda malli:
 
 ## 11. Lisa ajafilter
 
-Ajafilter aitab kasutajal vaadata sama dashboardi eri ajavahemikes.
+Ajafilter aitab sama dashboardi eri ajavahemikes vaadata.
 
 Tee sammud Superseti veebiliideses.
 
@@ -677,7 +681,7 @@ aga need ei tähenda sama asja kui müügikuupäev.
 
 Oodatav tulemus:
 
-Dashboardi kasutaja saab valida ajavahemiku ja vaadata, kuidas KPI, trend ning kategooriate võrdlus muutuvad.
+Saad valida ajavahemiku ja vaadata, kuidas KPI, trend ning kategooriate võrdlus muutuvad.
 Katseta filtrit enne järgmise sammu juurde liikumist.
 
 1. Vali filtris mõni lühem vahemik, näiteks `2026-04-30` kuni `2026-05-06`.
