@@ -1,0 +1,23 @@
+product_id,product_name,category,base_price_eur
+P-100,Terasest veepudel,Korduskasutus,24.90
+P-200,Juhtmevaba laadija,Elektroonika,34.50
+P-300,Laualamp,Kodukontor,49.00
+P-400,Märkmik A5,Kontoritarbed,6.80
+P-500,Kohvitermos,Korduskasutus,19.90
+P-600,Monitorialus,Kodukontor,39.90
+P-700,Sülearvuti alus,Kodukontor,32.90
+P-800,USB-C dokk,Elektroonika,89.00
+P-900,Juhtmevaba hiir,Elektroonika,27.50
+P-1000,Mürasummutavad kõrvaklapid,Elektroonika,119.00
+P-1100,Kleepsulehed,Kontoritarbed,4.20
+P-1200,Pastapliiatsite komplekt,Kontoritarbed,5.90
+P-1300,Lauakalender,Kontoritarbed,8.50
+P-1400,Ergonoomiline hiirematt,Kodukontor,14.90
+P-1500,Taaskasutatud ostukott,Korduskasutus,3.90
+P-1600,Bambusest lõunakarp,Korduskasutus,16.90
+P-1700,Kohvioad 500 g,Kööginurk,12.90
+P-1800,Teevalik kontorisse,Kööginurk,9.80
+P-1900,Keraamiline kruus,Kööginurk,7.50
+P-2000,Valge tahvel,Tööruum,44.90
+P-2100,Tahvlimarkerite komplekt,Tööruum,6.40
+P-2200,Kaablikorrastaja,Tööruum,11.90

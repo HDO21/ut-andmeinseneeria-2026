@@ -1,0 +1,7 @@
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+CRON_TZ=Europe/Tallinn
+
+# Praktikumi ajal lisame iga minuti järel väikese koguse uusi müügisündmusi.
+# Väljund läheb logifaili, mida saab vajadusel hostist vaadata.
+* * * * * cd /app && /usr/local/bin/python scripts/microbatch.py run-scheduled >> /var/log/praktikum/pipeline.log 2>&1

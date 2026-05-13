@@ -12,7 +12,7 @@
 Dockerfile text eol=lf
 Dockerfile.* text eol=lf
 
-04-andmetorude-orkestreerimine/baastase/scheduler/crontab text eol=lf
+**/scheduler/crontab text eol=lf
 
 *.parquet binary
 *.pdf binary
