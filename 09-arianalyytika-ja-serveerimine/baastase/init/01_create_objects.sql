@@ -191,6 +191,8 @@ FROM analytics.v_sales_events
 GROUP BY sales_date;
 
 -- Viimased töövoo käivitused. Supersetis on sellest starter-dashboardi tabel.
+-- Hoidame päris ajatemplid alles, et Superset saaks sortida ja filtreerida.
+-- Lisaks loome lühikesed tekstiveerud, mis mahuvad dashboardi tabelisse paremini.
 CREATE OR REPLACE VIEW monitoring.v_recent_microbatch_runs AS
 SELECT
     id,
@@ -199,9 +201,21 @@ SELECT
     rows_inserted,
     watermark_from,
     watermark_to,
+    CASE
+        WHEN watermark_from IS NULL OR watermark_to IS NULL THEN '-'
+        WHEN (watermark_from AT TIME ZONE 'Europe/Tallinn')::date =
+             (watermark_to AT TIME ZONE 'Europe/Tallinn')::date
+            THEN TO_CHAR(watermark_from AT TIME ZONE 'Europe/Tallinn', 'DD.MM HH24:MI')
+                 || '-' ||
+                 TO_CHAR(watermark_to AT TIME ZONE 'Europe/Tallinn', 'HH24:MI')
+        ELSE TO_CHAR(watermark_from AT TIME ZONE 'Europe/Tallinn', 'DD.MM HH24:MI')
+             || '-' ||
+             TO_CHAR(watermark_to AT TIME ZONE 'Europe/Tallinn', 'DD.MM HH24:MI')
+    END AS data_window_label,
     message,
     started_at,
-    finished_at
+    finished_at,
+    TO_CHAR(finished_at AT TIME ZONE 'Europe/Tallinn', 'DD.MM HH24:MI') AS finished_at_label
 FROM monitoring.microbatch_run_log
 ORDER BY id DESC
 LIMIT 20;

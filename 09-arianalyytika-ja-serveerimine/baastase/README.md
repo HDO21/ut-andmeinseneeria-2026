@@ -114,6 +114,11 @@ Kui kasutad Windowsit, vali üks terminal ja püsi selles kogu praktikumi välte
 Soovitatud valik on `PowerShell` või `Git Bash`. Juhendis on eraldi märgitud
 need kohad, kus PowerShelli käsk erineb Linuxi või macOS-i käsust.
 
+Windowsis peab Docker Desktop enne `docker compose` käske töötama. Ava Docker
+Desktop ja oota, kuni selle olek näitab, et Docker Engine on käivitunud. Kui
+repo asub OneDrive'i või muu sünkroonitud kausta all ja Docker ei suuda faile
+konteinerisse jagada, tõsta repo tavalisse töökausta, näiteks `C:\projects`.
+
 Sa ei pea Windowsis käsitsi käivitama ühtegi `.sh` faili. Need failid töötavad
 Linuxi konteineri sees ja Docker käivitab need ise.
 
@@ -173,8 +178,12 @@ SOURCE_API_PORT_HOST=8020
 
 Vaikimisi andmeaken on seatud 14.05.2026 praktikumi järgi. Source API alustab
 kuupäevast `2026-04-30` ja alglaadimine võtab 14 päeva ajalugu. See tähendab,
-et starter-dashboardil on kohe näha vahemik 30.04-13.05 ning cron hakkab
-lisama 14.05 müügisündmusi.
+et starter-dashboardil on kohe näha vahemik 30.04-13.05.
+
+Source API ei anna välja tulevikusündmusi. Kui 14.05 sündmuse kellaaeg ei ole
+veel kätte jõudnud, võib scheduler kirjutada logisse `skipped` rea. See ei ole
+viga. See tähendab, et töövoog küsis uusi andmeid, aga allikas ei saanud veel
+järgmist müügisündmust anda.
 
 Kui oled praktikumit varem käivitanud ja tahad täiesti puhast algust, kasuta juhendi lõpus olevat `docker compose down -v` käsku.
 
@@ -264,6 +273,10 @@ Selles praktikumis küsib cron iga minuti järel source API-st kuni 12 järgmist
 
 Kui allikas on rohkem kui 12 uut sündmust, jäävad ülejäänud järgmise käivituse ootele. See on tavaline mikrobatch-muster: laadijal on partii suurus, allikal võib olla sellest suurem maht.
 
+Source API annab ainult need sündmused, mille sündmuse aeg on praktikumi
+kohaliku aja järgi kätte jõudnud. Nii ei ilmu dashboardile tellimusi, mis
+peaksid toimuma alles hiljem.
+
 See on mikrobatch'i õppemudel, mitte tootmisvalmis voogedastusplatvorm. Päris süsteemis võib sama rolli täita Kafka offset, CDC logipositsioon, Airflow metadata, Kubernetes CronJob või mõni muu orkestreerija. Siin hoiame mustri väikese ja nähtavana: source API annab järjestatud sündmused, `scheduler` loeb neid portsjonite kaupa ja `control.pipeline_state` jätab meelde järgmise sündmuse järjekorranumbri.
 
 ### Andmeaken ja watermark
@@ -274,7 +287,7 @@ Andmeaken kirjeldab selle laadimise sündmuste ajavahemikku. `Watermark` on tehn
 
 Näide:
 
-Kui logis on `watermark_from = 2026-05-14 08:00` ja `watermark_to = 2026-05-14 08:55`, siis lisas viimane mikrobatch selle ajavahemiku sündmused.
+Kui logis on `watermark_from = 2026-05-14 13:00` ja `watermark_to = 2026-05-14 14:55`, siis lisas viimane mikrobatch selle ajavahemiku sündmused.
 
 ### Andmelugu
 
@@ -438,12 +451,22 @@ Vaata tabelit `Viimased laadimised`.
 
 Oodatav tulemus:
 
-- iga umbes minuti järel ilmub uus `scheduled` rida;
+- iga umbes minuti järel ilmub uus `scheduled` käivituse rida;
 - `rows_inserted` näitab, mitu müügisündmust selles mikrobatch'is andmebaasi laaditi;
-- `watermark_from` ja `watermark_to` näitavad, millise andmeaja sündmused jõudsid viimasesse laadimisse;
-- KPI `Kogukäive` kasvab aja jooksul.
+- `Andmeaken` näitab lühidalt, millise andmeaja sündmused jõudsid viimasesse laadimisse;
+- KPI `Kogukäive` kasvab siis, kui source API-l on kätte jõudnud uusi sündmusi.
 
-Kui tabel ei muutu kohe, oota kuni järgmise täisminutini. Cron käivitub minuti kaupa.
+Kui tabelisse ilmub `skipped` rida, töötab scheduler õigesti, kuid allikal ei
+ole veel uut kättesaadavat müügisündmust. Kui tabel ei muutu kohe, oota kuni
+järgmise täisminutini. Cron käivitub minuti kaupa.
+
+Soovi korral võid source API hetkeseisu vaadata brauseris:
+
+```text
+http://localhost:8019/docs
+```
+
+Codespacesis ava port `8019` **Ports** vaate kaudu.
 
 ## 7. Loo joonis: päevane käive ajas
 
@@ -491,6 +514,10 @@ Line Chart
 | Metrics | `SUM(gross_sales_eur)` ehk `SUM(Käive)` |
 | Dimensions või Series | `region` ehk `Piirkond` |
 | Time range | `No filter` |
+
+`Time range = No filter` tähendab siin, et joonisel endal ei ole püsivat
+ajapiiri. Hiljem lisatav dashboardi ajafilter saab seda joonist juhtida
+andmekogumi `sales_date` veeru kaudu.
 
 Kui Superset ei paku valmis mõõdikut `SUM(gross_sales_eur)`, loo see samal
 Metrics väljal: vali veerg `gross_sales_eur` ehk `Käive` ja koondamisviisiks
@@ -541,6 +568,9 @@ Bar Chart
 | Sort by | sama mõõdik: `SUM(gross_sales_eur)` ehk `SUM(Käive)` |
 | Sort descending | sees |
 | Time range | `No filter` |
+
+Jäta ka siin `Time range` väärtuseks `No filter`, et dashboardi ühine ajafilter
+saaks seda joonist hiljem muuta.
 
 Kui Superset kuvab veerud eesti keeles, vali `Kategooria` ja `Käive`. Kui ta
 kuvab tehnilised nimed, vali `category` ja `gross_sales_eur`.
@@ -632,6 +662,15 @@ Müügikuupäev
 enda ajaveergu. Praktikumi müügi-datasetites on selleks `sales_date`, mida
 Superset võib näidata pealkirjaga `Müügikuupäev`.
 
+Nende plokkide oluline ajaveerg on:
+
+| Dashboardi plokk | Dataset | Ajaveerg |
+|------------------|---------|----------|
+| `Kogukäive` | `v_dashboard_kpi` | `sales_date` ehk `Müügikuupäev` |
+| `Päevane käive piirkonniti` | `v_sales_daily` | `sales_date` ehk `Müügikuupäev` |
+| `Käive kategooriate kaupa` | `v_sales_by_category` | `sales_date` ehk `Müügikuupäev` |
+| `Viimased laadimised` | `v_recent_microbatch_runs` | `finished_at` ehk `Lõppes` |
+
 Ära seo seda filtrit datasetiga `v_recent_microbatch_runs`. Selle logitabeli
 ajaveerud on `finished_at`, `started_at`, `watermark_from` ja `watermark_to`,
 aga need ei tähenda sama asja kui müügikuupäev.
@@ -639,6 +678,12 @@ aga need ei tähenda sama asja kui müügikuupäev.
 Oodatav tulemus:
 
 Dashboardi kasutaja saab valida ajavahemiku ja vaadata, kuidas KPI, trend ning kategooriate võrdlus muutuvad.
+Katseta filtrit enne järgmise sammu juurde liikumist.
+
+1. Vali filtris mõni lühem vahemik, näiteks `2026-04-30` kuni `2026-05-06`.
+2. Kontrolli, et muutuvad `Kogukäive`, päevane trend ja kategooriate joonis.
+3. Kontrolli, et `Viimased laadimised` ei muutu sama filtri tõttu.
+4. Pane filter tagasi laiema vahemiku peale või eemalda filter.
 
 Kui filter ei rakendu kõigile joonistele, kontrolli, kas joonised kasutavad datasette, kus on olemas veerg `sales_date`.
 Superset võib sama veergu näidata nimega `Müügikuupäev`.
@@ -677,6 +722,7 @@ Praktikumi lõpus peaks sul olema:
 - logitabel `Viimased laadimised`;
 - sinu loodud trendijoonis;
 - sinu loodud kategooria või piirkonna võrdlusjoonis;
+- ajafilter, mis muudab müügijooniseid, kuid ei muuda töövoo logi;
 - Markdown-plokk, mis sõnastab peamise tähelepaneku ja vähemalt ühe piirangu;
 - nähtav andmete värskendus cron'i logi kaudu.
 
@@ -734,6 +780,30 @@ Kasuta Codespace'i seadistust, kus Docker ja `docker compose` on lubatud, või
 tööta lokaalselt Docker Desktopiga. Kui kasutad juhendaja antud Codespacesi
 malli, loo Codespace vajaduse korral uuesti või tee pärast seadistuse muutmist
 rebuild.
+
+### Windowsis ei saa Dockeriga ühendust
+
+Sümptom:
+
+```text
+Cannot connect to the Docker daemon
+```
+
+või:
+
+```text
+error during connect
+```
+
+Tõenäoline põhjus:
+
+Docker Desktop ei tööta veel või Windows ei ole Dockeri Linuxi mootorit valmis
+käivitanud.
+
+Lahendus:
+
+Ava Docker Desktop, oota kuni see on täielikult käivitunud, ja proovi sama
+`docker compose` käsku uuesti. Kui viga kordub, taaskäivita Docker Desktop.
 
 ### Superset avaneb, aga dashboardi ei ole
 
@@ -835,6 +905,10 @@ Kui töötad Windows PowerShellis ja `tail` ei tööta, kasuta:
 Get-Content logs/pipeline.log -Tail 30
 ```
 
+Kui logitabelis tekivad `skipped` read, ei ole see sama viga. `skipped`
+tähendab, et source API-l ei olnud veel ühtegi uut sündmust, mille aeg oleks
+kätte jõudnud.
+
 ### Scheduler ei käivitu Windowsis pärast faili muutmist
 
 Sümptom:
@@ -851,13 +925,14 @@ bad interpreter
 
 Tõenäoline põhjus:
 
-Shelli skript salvestati Windowsi `CRLF` reavahetustega. Linuxi konteiner ootab
-`LF` reavahetusi.
+Shelli skript või `scheduler/crontab` salvestati Windowsi `CRLF`
+reavahetustega. Linuxi konteiner ootab `LF` reavahetusi.
 
 Lahendus:
 
-Ava `scheduler/entrypoint.sh` VS Code'is. Akna alumises paremas servas vali
-reavahetuseks `LF` ja salvesta fail. Seejärel käivita stack uuesti:
+Ava `scheduler/entrypoint.sh` ja `scheduler/crontab` VS Code'is. Akna alumises
+paremas servas vali reavahetuseks `LF` ja salvesta failid. Seejärel käivita
+stack uuesti:
 
 ```bash
 docker compose up -d --build
@@ -926,12 +1001,65 @@ Hea dashboard ei ole ainult piltide kogum. See on korrastatud vastus äriküsimu
 
 Vali üks lisaülesanne.
 
-1. Lisa kolmas joonis piirkondade võrdluseks datasetist `v_sales_by_region`.
-2. Lisa teine KPI: keskmine ostukorv datasetist `v_dashboard_kpi`.
+1. Lisa dashboardile väike tabel, mis näitab valitud müügiperioodi algus- ja lõppkuupäeva.
+2. Lisa kolmas joonis piirkondade võrdluseks datasetist `v_sales_by_region`.
+3. Lisa teine KPI: keskmine ostukorv datasetist `v_dashboard_kpi`.
    Kasuta arvutust `SUM(total_revenue_eur) / SUM(total_orders)`, et ajafiltri
    korral oleks tulemus kogu valitud perioodi keskmine.
-3. Muuda Markdown-plokk konkreetsemaks: kirjuta üks soovitus ja üks kontrollküsimus.
-4. Ava **SQL Lab** ja uuri päringuga, milline kategooria annab suurima käibe.
+4. Muuda Markdown-plokk konkreetsemaks: kirjuta üks soovitus ja üks kontrollküsimus.
+5. Ava **SQL Lab** ja uuri päringuga, milline kategooria annab suurima käibe.
+
+### Lisaülesanne: näita valitud müügiperioodi
+
+Ajafilter on dashboardi ülaservas näha, aga vahel on kasulik näidata valitud
+andmevahemikku ka jooniste juures. Selleks sobib väike ühe reaga tabel.
+
+Tee sammud Superseti veebiliideses.
+
+1. Ava **Charts**.
+2. Vajuta **+ Chart**.
+3. Vali dataset:
+
+```text
+v_dashboard_kpi
+```
+
+4. Vali visualiseerimistüüp:
+
+```text
+Table
+```
+
+5. Vajuta **Create new chart**.
+6. Vali päringu režiimiks **Aggregate**.
+7. Jäta **Group by** tühjaks.
+8. Lisa kaks mõõdikut:
+
+| Mõõdik | Nimi |
+|--------|------|
+| `MIN(sales_date)` | `Perioodi algus` |
+| `MAX(sales_date)` | `Perioodi lõpp` |
+
+Kui Superset kuvab veerud eesti keeles, vali mõõdiku aluseks `Müügikuupäev`.
+Koondamisviisid on vastavalt `MIN` ja `MAX`.
+
+9. Sea `Time range` väärtuseks `No filter`.
+10. Vajuta **Run**.
+11. Salvesta joonis nimega:
+
+```text
+Valitud müügiperiood
+```
+
+12. Lisa see dashboardile ja rakenda talle sama `Müügikuupäev` ajafilter.
+
+Oodatav tulemus:
+
+Tabel näitab valitud filtrivahemikus tegelikult olemas olevate müügiandmete
+algus- ja lõppkuupäeva. Kui valitud vahemikus mõnel päeval andmeid ei ole,
+võib kuvatud algus või lõpp erineda filtri tehnilisest piirist. See on hea
+meeldetuletus: dashboard näitab olemasolevaid andmeid, mitte ainult filtri
+seadistust.
 
 Näidispäring SQL Labis:
 

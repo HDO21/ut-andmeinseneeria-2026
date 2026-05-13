@@ -60,14 +60,17 @@ def env_text(name: str, default: str) -> str:
 
 
 def env_int(name: str, default: int) -> int:
+    """Loe keskkonnamuutuja täisarvuna."""
     return int(env_text(name, str(default)))
 
 
 def now_local() -> datetime:
+    """Tagasta praegune aeg praktikumi kohalikus ajavööndis."""
     return datetime.now(TALLINN_TZ)
 
 
 def log(message: str) -> None:
+    """Kirjuta üks logirida nii, et Docker näitab seda kohe."""
     print(f"{now_local().isoformat()} | {message}", flush=True)
 
 
@@ -105,6 +108,7 @@ def read_products() -> list[Product]:
 
 
 def read_stores() -> list[Store]:
+    """Loe poodide kataloog CSV failist."""
     with (SOURCE_DATA_DIR / "stores.csv").open(encoding="utf-8", newline="") as handle:
         return [
             Store(
@@ -173,10 +177,12 @@ def load_dimensions(conn, products: list[Product], stores: list[Store]) -> None:
 
 
 def get_source_api_url() -> str:
+    """Tagasta source API aadress Docker Compose võrgu sees."""
     return env_text("SOURCE_API_URL", "http://source-api:8019").rstrip("/")
 
 
 def fetch_json(path: str, params: dict) -> dict:
+    """Küsi source API-st JSON vastus."""
     query = urlencode(params)
     url = f"{get_source_api_url()}{path}?{query}" if query else f"{get_source_api_url()}{path}"
     with urlopen(url, timeout=20) as response:
@@ -199,10 +205,12 @@ def fetch_source_events(*, after_sequence: int, limit: int) -> dict:
 
 
 def fetch_backfill_state(days: int) -> dict:
+    """Küsi API-lt, kui kaugele algne ajaloo laadimine võib minna."""
     return fetch_json("/api/backfill-state", {"days": days})
 
 
 def parse_event_time(value: str) -> datetime:
+    """Muuda API vastuses olev ajatempel Pythoni ajaks."""
     return datetime.fromisoformat(value)
 
 
@@ -545,6 +553,7 @@ def run_scheduled(_args: argparse.Namespace) -> None:
 
 
 def check(_args: argparse.Namespace) -> None:
+    """Prindi käsureale lühike kontroll, mitu rida olulisemates tabelites on."""
     conn = get_connection()
     try:
         with conn.cursor() as cur:

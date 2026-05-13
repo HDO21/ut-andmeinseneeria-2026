@@ -55,6 +55,7 @@ def stable_int(seed: str, minimum: int, maximum: int) -> int:
 
 
 def stable_fraction(seed: str) -> float:
+    """Tagasta sama sisendi jaoks alati sama murdarv vahemikus 0 kuni 1."""
     seeded_text = f"{SEED_PREFIX}|{seed}"
     value = int(sha256(seeded_text.encode("utf-8")).hexdigest()[:16], 16)
     return (value + 0.5) / (16**16)
@@ -77,15 +78,28 @@ def read_csv_dicts(path: Path) -> list[dict]:
 
 
 def load_products() -> list[dict]:
+    """Loe tootekataloog failist, et API saaks sündmustele toote lisada."""
     return read_csv_dicts(SOURCE_DATA_DIR / "products.csv")
 
 
 def load_stores() -> list[dict]:
+    """Loe poodide loend failist, et API saaks sündmustele piirkonna lisada."""
     return read_csv_dicts(SOURCE_DATA_DIR / "stores.csv")
 
 
 def source_end_date() -> date:
+    """Tagasta viimane kuupäev, mille kohta API oskab andmeid arvutada."""
     return SOURCE_START_DATE + timedelta(days=SOURCE_MAX_DAYS - 1)
+
+
+def now_local() -> datetime:
+    """Tagasta praegune aeg praktikumi kohalikus ajavööndis."""
+    return datetime.now(TALLINN_TZ)
+
+
+def parse_event_time(value: str) -> datetime:
+    """Muuda API vastuses olev ISO-kujul ajatempel Pythoni ajaks."""
+    return datetime.fromisoformat(value)
 
 
 def get_order_count(logical_date: date) -> int:
@@ -105,6 +119,7 @@ def get_order_count(logical_date: date) -> int:
 
 
 def count_events_before(logical_date: date) -> int:
+    """Leia, mitu sündmust on varasematel päevadel kokku olnud."""
     total = 0
     current_date = SOURCE_START_DATE
     while current_date < logical_date:
@@ -114,6 +129,7 @@ def count_events_before(logical_date: date) -> int:
 
 
 def date_for_sequence(event_sequence: int) -> date:
+    """Leia, millisele kuupäevale etteantud järjekorranumbriga sündmus kuulub."""
     if event_sequence < 1:
         raise ValueError("event_sequence peab olema vähemalt 1.")
 
@@ -217,47 +233,116 @@ def build_orders(logical_date: date) -> list[dict]:
     return orders
 
 
-def build_events_after(after_sequence: int, limit: int) -> list[dict]:
+def count_available_events(as_of: datetime) -> int:
+    """Leia, mitu sündmust on etteantud hetkeks kättesaadavaks muutunud.
+
+    API võib arvutada kogu sünteetilise andmestiku ette, kuid päringu vastusesse
+    lubame ainult need sündmused, mille `event_time` ei ole tulevikus.
+    """
+    total = 0
+    current_date = SOURCE_START_DATE
+
+    while current_date < as_of.date() and current_date <= source_end_date():
+        total += get_order_count(current_date)
+        current_date += timedelta(days=1)
+
+    if SOURCE_START_DATE <= as_of.date() <= source_end_date():
+        total += sum(
+            1
+            for event in build_orders(as_of.date())
+            if parse_event_time(event["event_time"]) <= as_of
+        )
+
+    return total
+
+
+def build_events_after(
+    after_sequence: int,
+    limit: int,
+    *,
+    as_of: datetime | None = None,
+    available_sequence: int | None = None,
+) -> list[dict]:
+    """Tagasta järgmine ports sündmuseid pärast antud järjekorranumbrit.
+
+    `after_sequence` on API järjehoidja. Kui ETL on jõudnud sündmuseni 1377,
+    küsib ta järgmisena sündmuseid pärast 1377. `limit` ütleb, mitu rida API
+    korraga kõige rohkem tagasi annab. `as_of` hoiab ära tuleviku sündmused.
+    """
     if limit < 1:
         return []
 
+    as_of = as_of or now_local()
+    if available_sequence is None:
+        available_sequence = count_available_events(as_of)
+    if after_sequence >= available_sequence:
+        return []
+
     target_sequence = after_sequence + 1
+    effective_limit = min(limit, available_sequence - after_sequence)
     events: list[dict] = []
-    while len(events) < limit:
+    while len(events) < effective_limit:
         try:
             current_date = date_for_sequence(target_sequence)
         except ValueError:
             break
 
         for event in build_orders(current_date):
-            if event["event_sequence"] > after_sequence:
+            if after_sequence < event["event_sequence"] <= available_sequence:
                 events.append(event)
-                if len(events) >= limit:
+                if len(events) >= effective_limit:
                     break
         target_sequence = events[-1]["event_sequence"] + 1 if events else target_sequence + 1
 
     return events
 
 
-def backfill_state(days: int) -> dict:
-    """Kirjelda, kuhu algne ajaloo laadimine valitud päevade arvuga jõuab."""
+def backfill_state(days: int, *, as_of: datetime | None = None) -> dict:
+    """Kirjelda, kuhu algne ajaloo laadimine valitud päevade arvuga jõuab.
+
+    Kui soovitud ajaloo lõpp oleks praegusest hetkest tulevikus, lõikame piiri
+    viimase kättesaadava sündmuse juurde. Nii ei jäta ETL järjehoidja tuleviku
+    sündmuseid kogemata vahele.
+    """
+    as_of = as_of or now_local()
     days = max(1, min(days, SOURCE_MAX_DAYS))
-    through_date = SOURCE_START_DATE + timedelta(days=days - 1)
-    through_sequence = count_events_before(through_date + timedelta(days=1))
-    next_events = build_events_after(through_sequence, 1)
+    requested_through_date = SOURCE_START_DATE + timedelta(days=days - 1)
+    requested_through_sequence = count_events_before(requested_through_date + timedelta(days=1))
+    available_sequence = count_available_events(as_of)
+    through_sequence = min(requested_through_sequence, available_sequence)
+    through_date = date_for_sequence(through_sequence) if through_sequence > 0 else None
+    next_events = build_events_after(
+        through_sequence,
+        1,
+        as_of=as_of,
+        available_sequence=available_sequence,
+    )
     return {
         "days": days,
         "from_date": SOURCE_START_DATE.isoformat(),
-        "through_date": through_date.isoformat(),
+        "through_date": through_date.isoformat() if through_date else None,
         "through_sequence": through_sequence,
         "next_event_time": next_events[0]["event_time"] if next_events else None,
+        "requested_through_date": requested_through_date.isoformat(),
+        "requested_through_sequence": requested_through_sequence,
+        "available_as_of": as_of.isoformat(),
+        "available_through_sequence": available_sequence,
+        "capped_by_current_time": through_sequence < requested_through_sequence,
     }
 
 
 class RequestHandler(BaseHTTPRequestHandler):
+    """HTTP päringute töötleja.
+
+    Pythoni standardteegi `BaseHTTPRequestHandler` annab meile raami ette.
+    Meie kirjeldame siin, mida API vastab teedel `/health`,
+    `/api/backfill-state` ja `/api/events`.
+    """
+
     server_version = "Praktikum09SourceAPI/1.0"
 
     def _send_json(self, status_code: int, payload: dict) -> None:
+        """Saada kliendile JSON vastus."""
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -266,6 +351,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _send_html(self, status_code: int, html: str) -> None:
+        """Saada kliendile brauseris loetav HTML leht."""
         encoded = html.encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -274,7 +360,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _build_docs_page(self) -> str:
-        state = backfill_state(14)
+        """Ehita API avaleht, kust õppija näeb teenuse hetkeseisu."""
+        as_of = now_local()
+        state = backfill_state(14, as_of=as_of)
         return f"""<!doctype html>
 <html lang="et">
   <head>
@@ -286,7 +374,9 @@ class RequestHandler(BaseHTTPRequestHandler):
     <p>See teenus simuleerib veebipoe müügisündmuste allikat.</p>
     <ul>
       <li>Andmeid alates: {SOURCE_START_DATE.isoformat()}</li>
-      <li>Andmeid kuni: {source_end_date().isoformat()}</li>
+      <li>Genereerimise ülempiir: {source_end_date().isoformat()}</li>
+      <li>API kohalik aeg: {as_of.isoformat(timespec="seconds")}</li>
+      <li>Praeguseks kättesaadav kuni sündmuseni: {state["available_through_sequence"]}</li>
       <li>14 päeva backfill lõpeb sündmusel: {state["through_sequence"]}</li>
     </ul>
     <p><a href="/health">/health</a></p>
@@ -312,6 +402,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/health":
+            as_of = now_local()
             self._send_json(
                 200,
                 {
@@ -319,6 +410,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "service": "praktikum-09-source-api",
                     "available_from": SOURCE_START_DATE.isoformat(),
                     "available_to": source_end_date().isoformat(),
+                    "available_as_of": as_of.isoformat(),
+                    "available_through_sequence": count_available_events(as_of),
                     "average_orders_per_day": AVERAGE_ORDERS_PER_DAY,
                 },
             )
@@ -344,7 +437,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             # API kaitseb end liiga suure päringu eest. Tavaline mikrobatch'i
             # suurus tuleb scheduler'i `.env` failist ja on vaikimisi 12.
             limit = max(1, min(limit, 1000))
-            events = build_events_after(after_sequence, limit)
+            as_of = now_local()
+            available_sequence = count_available_events(as_of)
+            events = build_events_after(
+                after_sequence,
+                limit,
+                as_of=as_of,
+                available_sequence=available_sequence,
+            )
             next_after_sequence = events[-1]["event_sequence"] if events else after_sequence
             self._send_json(
                 200,
@@ -354,7 +454,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "limit": limit,
                     "returned_count": len(events),
                     "next_after_sequence": next_after_sequence,
-                    "has_more": bool(build_events_after(next_after_sequence, 1)),
+                    "has_more": bool(
+                        build_events_after(
+                            next_after_sequence,
+                            1,
+                            as_of=as_of,
+                            available_sequence=available_sequence,
+                        )
+                    ),
+                    "available_as_of": as_of.isoformat(),
+                    "available_through_sequence": available_sequence,
                     "events": events,
                 },
             )
