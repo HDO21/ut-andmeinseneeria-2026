@@ -4,6 +4,10 @@
 -- skeemis. Praktikumi andmed hoiame eraldi skeemides, et õppeandmed ja
 -- tööriista sisetabelid ei läheks segamini.
 
+-- Praktikumi äripäev on Tallinna aja järgi. TIMESTAMPTZ hoiab ajahetke koos
+-- ajavööndi infoga, aga päevaks lõikamisel ütleme ajavööndi alati selgelt.
+SET TIME ZONE 'Europe/Tallinn';
+
 -- `staging` on maandumiskiht. Siia jõuavad andmed võimalikult allikalähedasel
 -- kujul.
 CREATE SCHEMA IF NOT EXISTS staging;
@@ -94,7 +98,7 @@ SELECT
     e.event_sequence,
     e.order_id,
     e.event_time,
-    e.event_time::date AS sales_date,
+    (e.event_time AT TIME ZONE 'Europe/Tallinn')::date AS sales_date,
     e.processed_at,
     e.store_id,
     s.store_name,

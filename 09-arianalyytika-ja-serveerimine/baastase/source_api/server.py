@@ -27,7 +27,8 @@ from zoneinfo import ZoneInfo
 
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("SOURCE_API_PORT", "8019"))
-TALLINN_TZ = ZoneInfo(os.environ.get("TZ", "Europe/Tallinn"))
+LOCAL_TZ_NAME = os.environ.get("TZ", "Europe/Tallinn")
+TALLINN_TZ = ZoneInfo(LOCAL_TZ_NAME)
 SOURCE_DATA_DIR = Path(os.environ.get("SOURCE_DATA_DIR", "/app/source_data"))
 SOURCE_START_DATE = date.fromisoformat(os.environ.get("DEMO_START_DATE", "2026-04-30"))
 SOURCE_MAX_DAYS = int(os.environ.get("SOURCE_MAX_DAYS", "120"))

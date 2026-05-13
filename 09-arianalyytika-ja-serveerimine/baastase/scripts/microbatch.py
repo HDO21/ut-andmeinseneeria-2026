@@ -28,7 +28,8 @@ from zoneinfo import ZoneInfo
 import psycopg2
 
 
-TALLINN_TZ = ZoneInfo("Europe/Tallinn")
+LOCAL_TZ_NAME = os.environ.get("TZ", "Europe/Tallinn")
+TALLINN_TZ = ZoneInfo(LOCAL_TZ_NAME)
 SOURCE_DATA_DIR = Path(os.environ.get("SOURCE_DATA_DIR", "/app/source_data"))
 STATE_KEY = "sales_stream"
 
@@ -82,6 +83,7 @@ def get_connection():
         user=env_text("DB_USER", "praktikum"),
         password=env_text("DB_PASSWORD", "praktikum"),
         dbname=env_text("DB_NAME", "praktikum"),
+        options=f"-c timezone={LOCAL_TZ_NAME}",
     )
 
 

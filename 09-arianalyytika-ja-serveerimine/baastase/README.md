@@ -121,6 +121,13 @@ Kui kasutad GitHub Codespacesit, ava Superset brauseris Codespacesi **Ports**
 vaate kaudu. Aadress võib siis olla teistsugune kui `localhost`, kuid port on
 ikka sama, näiteks `8088`.
 
+Codespacesis töötab Superset samade konteineritega, kui selles Codespace'is on
+Docker ja `docker compose` olemas. Portide avamine käib seal veidi teisiti:
+jäta port `8088` **Private** nähtavusega. Ära tee seda praktikumi ajal
+avalikuks pordiks. Kui pead Superseti linki kellegi teisega jagama, muuda enne
+esimest käivitust `.env` failis vähemalt `SUPERSET_ADMIN_PASSWORD` ja
+`SUPERSET_SECRET_KEY`.
+
 ### Teenused
 
 Selles praktikumis käivitub viis põhilist teenust:
@@ -142,6 +149,15 @@ See praktikum kasutab vaikimisi porte:
 - PostgreSQL hostis: `5439`;
 - source API hostis: `8019`;
 - Superset hostis: `8088`.
+
+Praktikumi ajavöönd on `.env` failis:
+
+```text
+TZ=Europe/Tallinn
+```
+
+See hoiab source API sündmuste aja, cron'i logi, andmebaasi päringud ja
+Superseti vaated samas kohalikus ajas. Praktikumi ajal ära seda väärtust muuda.
 
 Kui port `8088` on juba kasutusel, muuda `.env` failis väärtust:
 
@@ -311,7 +327,20 @@ Kui töötad PowerShellis ja `cp` ei tööta, kasuta:
 Copy-Item .env.example .env
 ```
 
-Vaikimisi väärtused sobivad praktikumi läbimiseks. Päris töös ei kasutataks selliseid lihtsaid paroole.
+Vaikimisi väärtused sobivad praktikumi läbimiseks oma arvutis või privaatses
+Codespace'is. `.env` fail jääb gitist välja.
+
+Kui kasutad Codespacesit ja muudad porti `8088` avalikuks või jagad Superseti
+linki teistega, muuda enne käivitamist vähemalt need read:
+
+```text
+SUPERSET_SECRET_KEY=kirjuta-siia-pikem-juhuslik-saladus
+SUPERSET_ADMIN_PASSWORD=kirjuta-siia-uus-parool
+```
+
+Kui stack on juba varem käivitatud, ei pruugi Superset olemasoleva admini
+parooli automaatselt üle kirjutada. Õppekeskkonnas on siis kõige lihtsam teha
+puhas algus juhendi lõpus oleva `docker compose down -v` käsuga.
 
 ## 3. Käivita keskkond
 
@@ -363,6 +392,7 @@ docker compose exec scheduler psql -h db -U praktikum -d praktikum -f scripts/01
 
 Oodatav tulemus:
 
+- `SHOW timezone` näitab `Europe/Tallinn`;
 - toodete ja poodide tabelis on read;
 - `staging.order_events` sisaldab algset ajalugu;
 - `monitoring.microbatch_run_log` sisaldab vähemalt `bootstrap` ja `scheduled` ridu.
@@ -381,8 +411,11 @@ Logi sisse:
 
 ```text
 kasutaja: admin
-parool: admin
+parool: praktikum09
 ```
+
+Kui muutsid `.env` failis `SUPERSET_ADMIN_PASSWORD` väärtust, kasuta enda
+määratud parooli.
 
 Leia ülemisest menüüst **Dashboards** ja ava:
 
@@ -674,6 +707,33 @@ Seejärel käivita:
 ```bash
 docker compose up -d
 ```
+
+### Codespacesis puudub `docker` käsk
+
+Sümptom:
+
+```text
+docker: command not found
+```
+
+või:
+
+```text
+Cannot connect to the Docker daemon
+```
+
+Tõenäoline põhjus:
+
+Codespace'i tööruumis ei ole Dockerit või ei ole see terminalist kasutatav.
+Superset ise ei vaja Codespacesis erilahendust, aga selle praktikumi stack
+käivitub Docker Compose'iga.
+
+Lahendus:
+
+Kasuta Codespace'i seadistust, kus Docker ja `docker compose` on lubatud, või
+tööta lokaalselt Docker Desktopiga. Kui kasutad juhendaja antud Codespacesi
+malli, loo Codespace vajaduse korral uuesti või tee pärast seadistuse muutmist
+rebuild.
 
 ### Superset avaneb, aga dashboardi ei ole
 

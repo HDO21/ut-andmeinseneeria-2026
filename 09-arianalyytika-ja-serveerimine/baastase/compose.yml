@@ -14,6 +14,7 @@ services:
     container_name: praktikum-db-09-base
     env_file:
       - .env
+    command: ["postgres", "-c", "timezone=${TZ:-Europe/Tallinn}"]
     ports:
       - "${DB_PORT_HOST:-5439}:5432"
     volumes:
@@ -32,6 +33,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: ${TZ:-Europe/Tallinn}
       SOURCE_API_PORT: ${SOURCE_API_PORT:-8019}
       SOURCE_DATA_DIR: /app/source_data
     working_dir: /app
@@ -65,11 +67,13 @@ services:
       DB_USER: ${POSTGRES_USER:-praktikum}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       DB_NAME: ${POSTGRES_DB:-praktikum}
+      TZ: ${TZ:-Europe/Tallinn}
       PGHOST: db
       PGPORT: "5432"
       PGUSER: ${POSTGRES_USER:-praktikum}
       PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       PGDATABASE: ${POSTGRES_DB:-praktikum}
+      PGTZ: ${TZ:-Europe/Tallinn}
       SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
     depends_on:
       db:
@@ -97,11 +101,13 @@ services:
       DB_USER: ${POSTGRES_USER:-praktikum}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       DB_NAME: ${POSTGRES_DB:-praktikum}
+      TZ: ${TZ:-Europe/Tallinn}
       PGHOST: db
       PGPORT: "5432"
       PGUSER: ${POSTGRES_USER:-praktikum}
       PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       PGDATABASE: ${POSTGRES_DB:-praktikum}
+      PGTZ: ${TZ:-Europe/Tallinn}
       SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
     depends_on:
       bootstrap:
@@ -132,8 +138,9 @@ services:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
       ADMIN_USERNAME: ${SUPERSET_ADMIN_USER:-admin}
-      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-admin}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-praktikum09}
       ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@example.com}
     command:
       - /bin/sh
@@ -159,6 +166,7 @@ services:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
       POSTGRES_USER: ${POSTGRES_USER:-praktikum}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
       POSTGRES_DB: ${POSTGRES_DB:-praktikum}
@@ -187,6 +195,7 @@ services:
       SUPERSET_CONFIG_PATH: /app/superset_config.py
       DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
       SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
     command: ["/app/docker/entrypoints/run-server.sh"]
 
 volumes:

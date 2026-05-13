@@ -1,6 +1,9 @@
 -- Kiire kontroll pärast `docker compose up -d --build` käivitamist.
 -- Käivita see juhendis antud `docker compose exec scheduler psql ...` käsuga.
 
+-- Kas andmebaasi sessioon kasutab praktikumi kohalikku ajavööndit?
+SHOW timezone;
+
 -- Kas tootekataloog jõudis andmebaasi?
 SELECT COUNT(*) AS products_rows
 FROM staging.products_raw;
