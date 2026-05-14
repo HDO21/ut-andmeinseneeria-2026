@@ -29,7 +29,7 @@ flowchart LR
     skoor -->|dbt marts| aknad[(marts.mart_parimad_ajavahemikud)]
     paev --> superset[Superset näidikulaud]
     aknad --> superset
-    airflow[Airflow scheduler] -->|@hourly| api
+    airflow[Airflow scheduler] -->|"@hourly"| api
     airflow -->|BashOperator| dbt[dbt run + dbt test]
 ```
 
