@@ -1,0 +1,130 @@
+x-superset-build: &superset-build
+  context: .
+  dockerfile: Dockerfile.superset
+
+services:
+
+  # Analüütika andmebaas (pgduckdb)
+  db:
+    image: pgduckdb/pgduckdb:18-v1.1.1
+    container_name: praktikum-db-09
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      retries: 10
+
+  # Superseti metaandmete baas (eraldi PostgreSQL konteiner)
+  superset-db:
+    image: postgres:16
+    container_name: praktikum-supersetdb-09
+    environment:
+      POSTGRES_USER: ${SUPERSET_DB_USER}
+      POSTGRES_PASSWORD: ${SUPERSET_DB_PASSWORD}
+      POSTGRES_DB: ${SUPERSET_DB_NAME}
+    volumes:
+      - superset_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_DB_USER} -d ${SUPERSET_DB_NAME}"]
+      interval: 5s
+      retries: 10
+
+  # Initsialiseerimine: migratsioonid + admini kasutaja + rollid (jookseb üks kord läbi)
+  superset-init:
+    build: *superset-build
+    container_name: praktikum-supersetinit-09
+    depends_on:
+      superset-db:
+        condition: service_healthy
+    volumes:
+      - ./superset_config.py:/app/superset_config.py
+      - superset_home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER}:${SUPERSET_DB_PASSWORD}@superset-db:5432/${SUPERSET_DB_NAME}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USER}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL}
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} && superset init"
+
+  # Superset veebirakendus
+  superset:
+    build: *superset-build
+    container_name: praktikum-superset-09
+    depends_on:
+      superset-init:
+        condition: service_completed_successfully
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./superset_config.py:/app/superset_config.py
+      - superset_home:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${SUPERSET_DB_USER}:${SUPERSET_DB_PASSWORD}@superset-db:5432/${SUPERSET_DB_NAME}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY}
+    command: ["/app/docker/entrypoints/run-server.sh"]
+
+  # Pythoni konteiner andmete laadimiseks (CSV → andmebaas) ja REST API serveerimiseks
+  python:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    container_name: praktikum-python-09
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      API_KEY: ${API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+      - ./data:/data
+    working_dir: /scripts
+    ports:
+      - "8000:8000"
+    tty: true
+
+  # dbt konteiner mudelite käivitamiseks
+  dbt:
+    build:
+      context: .
+      dockerfile: Dockerfile.dbt
+    container_name: praktikum-dbt-09
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./dbt_project:/dbt
+    working_dir: /dbt
+    tty: true
+
+volumes:
+  pgdata:
+  superset_db:
+  superset_home:

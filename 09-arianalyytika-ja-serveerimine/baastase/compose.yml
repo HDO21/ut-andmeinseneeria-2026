@@ -1,0 +1,205 @@
+# Käivitamine:
+#   cp .env.example .env
+#   docker compose up -d --build
+
+x-superset-build: &superset-build
+  context: .
+  dockerfile: Dockerfile.superset
+
+services:
+  # Üks PostgreSQL server hoiab nii praktikumi andmeid kui ka Superseti
+  # metaandmeid. See hoiab baastaseme stacki väikese.
+  db:
+    image: pgduckdb/pgduckdb:18-v1.1.1
+    container_name: praktikum-db-09-base
+    env_file:
+      - .env
+    command: ["postgres", "-c", "timezone=${TZ:-Europe/Tallinn}"]
+    ports:
+      - "${DB_PORT_HOST:-5439}:5432"
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+      - pgdata_09_base:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-praktikum} -d ${POSTGRES_DB:-praktikum}"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  # Kohalik veebipoe sündmuste allikas. Scheduler küsib siit andmeid HTTP kaudu.
+  source-api:
+    image: python:3.13-slim
+    container_name: praktikum-source-api-09-base
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Europe/Tallinn}
+      SOURCE_API_PORT: ${SOURCE_API_PORT:-8019}
+      SOURCE_DATA_DIR: /app/source_data
+    working_dir: /app
+    volumes:
+      - ./source_api:/app/source_api
+      - ./source_data:/app/source_data
+    command: ["python", "/app/source_api/server.py"]
+    ports:
+      - "${SOURCE_API_PORT_HOST:-8019}:${SOURCE_API_PORT:-8019}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:${SOURCE_API_PORT:-8019}/health', timeout=5).read()\"",
+        ]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  # Ühekordne töö: laadib tooted, poed ja algse müügiajaloo.
+  bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: praktikum-bootstrap-09-base
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-praktikum}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      DB_NAME: ${POSTGRES_DB:-praktikum}
+      TZ: ${TZ:-Europe/Tallinn}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-praktikum}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      PGDATABASE: ${POSTGRES_DB:-praktikum}
+      PGTZ: ${TZ:-Europe/Tallinn}
+      SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
+    depends_on:
+      db:
+        condition: service_healthy
+      source-api:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/app/scripts
+      - ./source_data:/app/source_data
+    working_dir: /app
+    entrypoint: ["python", "scripts/microbatch.py", "bootstrap"]
+    restart: "no"
+
+  # Püsiv töövoo konteiner. Cron käivitab siin mikrobatch'i iga minuti järel.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.scheduler
+    container_name: praktikum-scheduler-09-base
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${POSTGRES_USER:-praktikum}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      DB_NAME: ${POSTGRES_DB:-praktikum}
+      TZ: ${TZ:-Europe/Tallinn}
+      PGHOST: db
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-praktikum}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      PGDATABASE: ${POSTGRES_DB:-praktikum}
+      PGTZ: ${TZ:-Europe/Tallinn}
+      SOURCE_API_URL: http://source-api:${SOURCE_API_PORT:-8019}
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/app/scripts
+      - ./source_data:/app/source_data
+      - ./scheduler:/app/scheduler
+      - ./logs:/var/log/praktikum
+    working_dir: /app
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep cron >/dev/null"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+
+  # Ühekordne Superseti seadistus: andmebaasi migratsioonid ja admin-kasutaja.
+  superset-init:
+    build: *superset-build
+    container_name: praktikum-supersetinit-09-base
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
+      ADMIN_USERNAME: ${SUPERSET_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-praktikum09}
+      ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@example.com}
+    command:
+      - /bin/sh
+      - -c
+      - "superset db upgrade && (superset fab create-admin --username $${ADMIN_USERNAME} --firstname Admin --lastname User --email $${ADMIN_EMAIL} --password $${ADMIN_PASSWORD} || true) && superset init"
+    restart: "no"
+
+  # Ühekordne import: lisab Superseti andmebaasiühenduse, datasetid,
+  # starter-joonised ja starter-dashboardi.
+  superset-import:
+    build: *superset-build
+    container_name: praktikum-supersetimport-09-base
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      superset-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - ./superset:/app/praktikum_superset
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
+      POSTGRES_USER: ${POSTGRES_USER:-praktikum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-praktikum}
+      POSTGRES_DB: ${POSTGRES_DB:-praktikum}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+    command:
+      - /bin/sh
+      - -c
+      - "python /app/praktikum_superset/zip_dashboard.py /app/praktikum_superset/dashboard_export /tmp/praktikum_09_dashboard.zip && superset import-dashboards --path /tmp/praktikum_09_dashboard.zip --username $${SUPERSET_ADMIN_USER}"
+    restart: "no"
+
+  # Superseti veebirakendus, mida õppija brauseris kasutab.
+  superset:
+    build: *superset-build
+    container_name: praktikum-superset-09-base
+    depends_on:
+      superset-import:
+        condition: service_completed_successfully
+    ports:
+      - "${SUPERSET_PORT_HOST:-8088}:8088"
+    volumes:
+      - ./superset/superset_config.py:/app/superset_config.py
+      - superset_home_09_base:/app/superset_home
+    environment:
+      SUPERSET_CONFIG_PATH: /app/superset_config.py
+      DATABASE_URI: "postgresql+psycopg2://${POSTGRES_USER:-praktikum}:${POSTGRES_PASSWORD:-praktikum}@db:5432/${POSTGRES_DB:-praktikum}"
+      SECRET_KEY: ${SUPERSET_SECRET_KEY:-praktikum_09_baastase_secret_key_muuda_soovi_korral_2026}
+      TZ: ${TZ:-Europe/Tallinn}
+    command: ["/app/docker/entrypoints/run-server.sh"]
+
+volumes:
+  pgdata_09_base:
+    name: praktikum-db-09-base-pgdata
+  superset_home_09_base:
+    name: praktikum-supersethome-09-base
