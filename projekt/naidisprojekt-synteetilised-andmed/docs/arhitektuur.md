@@ -41,7 +41,7 @@ flowchart LR
     int -->|dbt marts| tunnid[(marts.mart_parimad_tunnid)]
     paev --> superset[Superset näidikulaud]
     tunnid --> superset
-    airflow[Airflow scheduler] -->|@daily| gen
+    airflow[Airflow scheduler] -->|"@daily"| gen
     airflow -->|BashOperator| dbt[dbt run + dbt test]
 ```
 
